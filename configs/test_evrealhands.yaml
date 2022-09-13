@@ -1,0 +1,53 @@
+data:
+  data_dir: '/userhome/alanjjp/data/EvRealHands'
+  img_scale_factor: 0.25
+  dataset: 'evrealhands'
+  train_yaml: './src/datasets/evrealhands/train.yaml'
+  eval_yaml: './src/datasets/evrealhands/test.yaml'
+  event: True
+
+model:
+  bert_config: 'src/model/Transformer/bert_config/'
+  tfm:
+    output_attentions: False
+    drop_out: 0.1
+    mesh_type: 'hand'
+    num_hidden_layers: 12
+    num_attention_heads: 12
+    hidden_size: -1
+    intermediate_size: -1
+    input_feat_dim: [ 2051, 512, 128 ]
+    hidden_feat_dim: [ 1024,256,64 ]
+    which_gcn: [ 0, 0, 1 ]
+  backbone:
+    arch: 'hrnet'
+    hrnet_yaml: 'models/hrnet/cls_hrnet_w64_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
+    hrnet_bb: 'models/hrnet/hrnetv2_w64_imagenet_pretrained.pth'
+
+exper:
+  run_eval_only: False
+  resume_checkpoint: None
+  num_workers: 4
+  output_dir: './output'
+  per_gpu_train_batch_size: 32
+  per_gpu_eval_batch_size: 32
+  lr: 0.0001
+  num_train_epochs: 100
+  loss:
+    vertices_loss_weight: 1.0
+    joints_loss_weight: 1.0
+    vloss_w_full: 0.5
+    vloss_w_sub: 0.5
+  device: 'cuda'
+  seed: 88
+  distributed: False
+
+
+
+eval:
+  multiscale_inference: False
+  rot: 0
+  sc: 1.0
+
+utils:
+  logging_steps: 100

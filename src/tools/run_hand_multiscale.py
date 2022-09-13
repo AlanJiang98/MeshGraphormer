@@ -98,7 +98,7 @@ def run_multiscale_inference(model_path, mode, output_dir):
         scale = [1.0] 
 
     job_cmd = "python ./src/tools/run_gphmer_handmesh.py " \
-            "--val_yaml freihand_v3/test.yaml " \
+            "--val_yaml freihand_v3/test_freihand0.yaml " \
             "--resume_checkpoint %s " \
             "--per_gpu_eval_batch_size 32 --run_eval_only --num_worker 2 " \
             "--multiscale_inference " \

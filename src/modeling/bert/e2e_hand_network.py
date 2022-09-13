@@ -11,7 +11,7 @@ class Graphormer_Hand_Network(torch.nn.Module):
     '''
     End-to-end Graphormer network for hand pose and mesh reconstruction from a single image.
     '''
-    def __init__(self, args, config, backbone, trans_encoder):
+    def __init__(self, config, backbone, trans_encoder):
         super(Graphormer_Hand_Network, self).__init__()
         self.config = config
         self.backbone = backbone
@@ -66,7 +66,7 @@ class Graphormer_Hand_Network(torch.nn.Module):
             features[:,:-49,:] = features[:,:-49,:]*meta_masks + special_token*(1-meta_masks)
 
         # forward pass
-        if self.config.output_attentions==True:
+        if self.config['model']['tfm']['output_attentions']==True:
             features, hidden_states, att = self.trans_encoder(features)
         else:
             features = self.trans_encoder(features)
@@ -86,7 +86,7 @@ class Graphormer_Hand_Network(torch.nn.Module):
         pred_vertices = self.upsampling(temp_transpose)
         pred_vertices = pred_vertices.transpose(1,2)
 
-        if self.config.output_attentions==True:
+        if self.config['model']['tfm']['output_attentions']==True:
             return cam_param, pred_3d_joints, pred_vertices_sub, pred_vertices, hidden_states, att
         else:
             return cam_param, pred_3d_joints, pred_vertices_sub, pred_vertices

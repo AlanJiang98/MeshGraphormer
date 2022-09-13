@@ -4,6 +4,7 @@ Licensed under the MIT license.
 
 """
 
+
 import cv2
 import math
 import json
@@ -17,12 +18,29 @@ from src.utils.tsv_file_ops import load_linelist_file, load_from_yaml_file, find
 from src.utils.image_ops import img_from_base64, crop, flip_img, flip_pose, flip_kp, transform, rot_aa
 import torch
 import torchvision.transforms as transforms
+from torch.utils.data import Dataset
 
 
-class MeshTSVDataset(object):
-    def __init__(self, img_file, label_file=None, hw_file=None,
-                 linelist_file=None, is_train=True, cv2_output=False, scale_factor=1):
+class FreiHand0(Dataset):
+    def __init__(self, config, yaml_file, is_train=True, cv2_output=False, scale_factor=1):
+        self.cfg = load_from_yaml_file(yaml_file)
+        self.is_composite = self.cfg.get('composite', False)
+        self.root = op.dirname(yaml_file)
 
+        if self.is_composite == False:
+            img_file = find_file_path_in_yaml(self.cfg['img'], self.root)
+            label_file = find_file_path_in_yaml(self.cfg.get('label', None),
+                                                self.root)
+            hw_file = find_file_path_in_yaml(self.cfg.get('hw', None), self.root)
+            linelist_file = find_file_path_in_yaml(self.cfg.get('linelist', None),
+                                                   self.root)
+        else:
+            img_file = self.cfg['img']
+            hw_file = self.cfg['hw']
+            label_file = self.cfg.get('label', None)
+            linelist_file = find_file_path_in_yaml(self.cfg.get('linelist', None),
+                                                   self.root)
+        self.config = config
         self.img_file = img_file
         self.label_file = label_file
         self.hw_file = hw_file
@@ -41,16 +59,15 @@ class MeshTSVDataset(object):
         self.normalize_img = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                          std=[0.229, 0.224, 0.225])
         self.is_train = is_train
-        self.scale_factor = 0.25 # rescale bounding boxes by a factor of [1-options.scale_factor,1+options.scale_factor]
+        self.scale_factor = scale_factor # rescale bounding boxes by a factor of [1-options.scale_factor,1+options.scale_factor]
         self.noise_factor = 0.4
-        self.rot_factor = 30 # Random rotation in the range [-rot_factor, rot_factor]
+        self.rot_factor = 90 # Random rotation in the range [-rot_factor, rot_factor]
         self.img_res = 224
-
         self.image_keys = self.prepare_image_keys()
-
-        self.joints_definition = ('R_Ankle', 'R_Knee', 'R_Hip', 'L_Hip', 'L_Knee', 'L_Ankle', 'R_Wrist', 'R_Elbow', 'R_Shoulder', 'L_Shoulder',
-        'L_Elbow','L_Wrist','Neck','Top_of_Head','Pelvis','Thorax','Spine','Jaw','Head','Nose','L_Eye','R_Eye','L_Ear','R_Ear')
-        self.pelvis_index = self.joints_definition.index('Pelvis')
+        # TODO
+        self.joints_definition = ('Wrist', 'Thumb_1', 'Thumb_2', 'Thumb_3', 'Thumb_4', 'Index_1', 'Index_2', 'Index_3', 'Index_4', 'Middle_1', 
+                                'Middle_2', 'Middle_3', 'Middle_4', 'Ring_1', 'Ring_2', 'Ring_3', 'Ring_4', 'Pinky_1', 'Pinky_2', 'Pinky_3', 'Pinky_4')
+        self.root_index = self.joints_definition.index('Wrist')
 
     def get_tsv_file(self, tsv_file):
         if tsv_file:
@@ -75,18 +92,20 @@ class MeshTSVDataset(object):
         tsv = self.get_valid_tsv()
         return {tsv.get_key(i) : i for i in range(tsv.num_rows())}
 
-
     def augm_params(self):
         """Get augmentation parameters."""
         flip = 0            # flipping
         pn = np.ones(3)  # per channel pixel-noise
-        rot = 0            # rotation
-        sc = 1            # scaling
+
+        if self.config['eval']['multiscale_inference'] == False:
+            rot = 0 # rotation
+            sc = 1.0 # scaling
+        elif self.config['eval']['multiscale_inference'] == True:
+            rot = self.config['eval']['rot']
+            sc = self.config['eval']['sc']
+
         if self.is_train:
-            # We flip with probability 1/2
-            if np.random.uniform() <= 0.5:
-                flip = 1
-	    
+            sc = 1.0 
             # Each channel is multiplied with a number 
             # in the area [1-opt.noiseFactor,1+opt.noiseFactor]
             pn = np.random.uniform(1-self.noise_factor, 1+self.noise_factor, 3)
@@ -94,7 +113,7 @@ class MeshTSVDataset(object):
             # The rotation is a number in the area [-2*rotFactor, 2*rotFactor]
             rot = min(2*self.rot_factor,
                     max(-2*self.rot_factor, np.random.randn()*self.rot_factor))
-	    
+
             # The scale is multiplied with a number
             # in the area [1-scaleFactor,1+scaleFactor]
             sc = min(1+self.scale_factor,
@@ -102,7 +121,7 @@ class MeshTSVDataset(object):
             # but it is zero with probability 3/5
             if np.random.uniform() <= 0.6:
                 rot = 0
-	
+
         return flip, pn, rot, sc
 
     def rgb_processing(self, rgb_img, center, scale, rot, flip, pn):
@@ -173,7 +192,6 @@ class MeshTSVDataset(object):
         if self.cv2_output:
             return cv2_im.astype(np.float32, copy=True)
         cv2_im = cv2.cvtColor(cv2_im, cv2.COLOR_BGR2RGB)
-
         return cv2_im
 
     def get_annotations(self, idx):
@@ -189,7 +207,6 @@ class MeshTSVDataset(object):
         # This function will be overwritten by each dataset to 
         # decode the labels to specific formats for each task. 
         return annotations
-
 
     def get_img_info(self, idx):
         if self.hw_tsv is not None:
@@ -244,11 +261,6 @@ class MeshTSVDataset(object):
         pose = np.asarray(annotations['pose'])
         betas = np.asarray(annotations['betas'])
 
-        try:
-            gender = annotations['gender']
-        except KeyError:
-            gender = 'none'
-
         # Get augmentation parameters
         flip,pn,rot,sc = self.augm_params()
 
@@ -258,32 +270,33 @@ class MeshTSVDataset(object):
         # Store image before normalization to use it in visualization
         transfromed_img = self.normalize_img(img)
 
-        # normalize 3d pose by aligning the pelvis as the root (at origin)
-        root_pelvis = joints_3d[self.pelvis_index,:-1]
-        joints_3d[:,:-1] = joints_3d[:,:-1] - root_pelvis[None,:]
+        # normalize 3d pose by aligning the wrist as the root (at origin)
+        root_coord = joints_3d[self.root_index,:-1]
+        joints_3d[:,:-1] = joints_3d[:,:-1] - root_coord[None,:]
         # 3d pose augmentation (random flip + rotation, consistent to image and SMPL)
         joints_3d_transformed = self.j3d_processing(joints_3d.copy(), rot, flip)
         # 2d pose augmentation
         joints_2d_transformed = self.j2d_processing(joints_2d.copy(), center, sc*scale, rot, flip)
-
+        
         ###################################
         # Masking percantage
-        # We observe that 30% works better for human body mesh. Further details are reported in the paper.
-        mvm_percent = 0.3
+        # We observe that 0% or 5% works better for 3D hand mesh
+        # We think this is probably becasue 3D vertices are quite sparse in the down-sampled hand mesh 
+        mvm_percent = 0.0 # or 0.05
         ###################################
-        
-        mjm_mask = np.ones((14,1))
+
+        mjm_mask = np.ones((21,1))
         if self.is_train:
-            num_joints = 14
+            num_joints = 21
             pb = np.random.random_sample()
             masked_num = int(pb * mvm_percent * num_joints) # at most x% of the joints could be masked
             indices = np.random.choice(np.arange(num_joints),replace=False,size=masked_num)
             mjm_mask[indices,:] = 0.0
         mjm_mask = torch.from_numpy(mjm_mask).float()
 
-        mvm_mask = np.ones((431,1))
+        mvm_mask = np.ones((195,1))
         if self.is_train:
-            num_vertices = 431
+            num_vertices = 195
             pb = np.random.random_sample()
             masked_num = int(pb * mvm_percent * num_vertices) # at most x% of the vertices could be masked
             indices = np.random.choice(np.arange(num_vertices),replace=False,size=masked_num)
@@ -297,41 +310,14 @@ class MeshTSVDataset(object):
         meta_data['joints_3d'] = torch.from_numpy(joints_3d_transformed).float()
         meta_data['has_3d_joints'] = has_3d_joints
         meta_data['has_smpl'] = has_smpl
-
         meta_data['mjm_mask'] = mjm_mask
         meta_data['mvm_mask'] = mvm_mask
 
         # Get 2D keypoints and apply augmentation transforms
         meta_data['has_2d_joints'] = has_2d_joints
         meta_data['joints_2d'] = torch.from_numpy(joints_2d_transformed).float()
+
         meta_data['scale'] = float(sc * scale)
         meta_data['center'] = np.asarray(center).astype(np.float32)
-        meta_data['gender'] = gender
+
         return img_key, transfromed_img, meta_data
-
-
-
-class MeshTSVYamlDataset(MeshTSVDataset):
-    """ TSVDataset taking a Yaml file for easy function call
-    """
-    def __init__(self, yaml_file, is_train=True, cv2_output=False, scale_factor=1):
-        self.cfg = load_from_yaml_file(yaml_file)
-        self.is_composite = self.cfg.get('composite', False)
-        self.root = op.dirname(yaml_file)
-        
-        if self.is_composite==False:
-            img_file = find_file_path_in_yaml(self.cfg['img'], self.root)
-            label_file = find_file_path_in_yaml(self.cfg.get('label', None),
-                                                self.root)
-            hw_file = find_file_path_in_yaml(self.cfg.get('hw', None), self.root)
-            linelist_file = find_file_path_in_yaml(self.cfg.get('linelist', None),
-                                                self.root)
-        else:
-            img_file = self.cfg['img']
-            hw_file = self.cfg['hw']
-            label_file = self.cfg.get('label', None)
-            linelist_file = find_file_path_in_yaml(self.cfg.get('linelist', None),
-                                                self.root)
-
-        super(MeshTSVYamlDataset, self).__init__(
-            img_file, label_file, hw_file, linelist_file, is_train, cv2_output=cv2_output, scale_factor=scale_factor)

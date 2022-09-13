@@ -10,17 +10,7 @@ import torch
 import logging
 import code
 from src.utils.comm import get_world_size
-from src.datasets.human_mesh_tsv import (MeshTSVDataset, MeshTSVYamlDataset)
-from src.datasets.hand_mesh_tsv import (HandMeshTSVDataset, HandMeshTSVYamlDataset)
-
-
-def build_dataset(yaml_file, args, is_train=True, scale_factor=1):
-    print(yaml_file)
-    if not op.isfile(yaml_file):
-        yaml_file = op.join(args.data_dir, yaml_file)
-        # code.interact(local=locals())
-        assert op.isfile(yaml_file)
-    return MeshTSVYamlDataset(yaml_file, is_train, False, scale_factor)
+from src.datasets.Freihand0 import FreiHand0
 
 
 class IterationBasedBatchSampler(torch.utils.data.sampler.BatchSampler):
@@ -73,74 +63,54 @@ def make_data_sampler(dataset, shuffle, distributed):
     return sampler
 
 
-def make_data_loader(args, yaml_file, is_distributed=True, 
-        is_train=True, start_iter=0, scale_factor=1):
-
-    dataset = build_dataset(yaml_file, args, is_train=is_train, scale_factor=scale_factor)
-    logger = logging.getLogger(__name__)
-    if is_train==True:
-        shuffle = True
-        images_per_gpu = args.per_gpu_train_batch_size
-        images_per_batch = images_per_gpu * get_world_size()
-        iters_per_batch = len(dataset) // images_per_batch
-        num_iters = iters_per_batch * args.num_train_epochs
-        logger.info("Train with {} images per GPU.".format(images_per_gpu))
-        logger.info("Total batch size {}".format(images_per_batch))
-        logger.info("Total training steps {}".format(num_iters))
-    else:
-        shuffle = False
-        images_per_gpu = args.per_gpu_eval_batch_size
-        num_iters = None
-        start_iter = 0
-
-    sampler = make_data_sampler(dataset, shuffle, is_distributed)
-    batch_sampler = make_batch_data_sampler(
-        sampler, images_per_gpu, num_iters, start_iter
-    )
-    data_loader = torch.utils.data.DataLoader(
-        dataset, num_workers=args.num_workers, batch_sampler=batch_sampler,
-        pin_memory=True,
-    )
-    return data_loader
-
-
 #==============================================================================================
 
-def build_hand_dataset(yaml_file, args, is_train=True, scale_factor=1):
-    print(yaml_file)
-    if not op.isfile(yaml_file):
-        yaml_file = op.join(args.data_dir, yaml_file)
-        # code.interact(local=locals())
-        assert op.isfile(yaml_file)
-    return HandMeshTSVYamlDataset(args, yaml_file, is_train, False, scale_factor)
 
 
-def make_hand_data_loader(args, yaml_file, is_distributed=True, 
-        is_train=True, start_iter=0, scale_factor=1):
+def build_hand_dataset(config, is_train=True):
+    '''
+    generate dataset class for different datasets
+    '''
+    if config['data']['dataset'] == 'freihand0':
+        yaml_file = config['data']['train_yaml'] if is_train else config['data']['eval_yaml']
+        print(yaml_file)
+        return FreiHand0(config, yaml_file, is_train, False, config['data']['img_scale_factor'])
+    if config['data']['dataset'] == 'freihand1':
+        pass
+    if config['data']['dataset'] == 'interhand':
+        pass
+    if config['data']['dataset'] == 'evrealhands':
+        pass
 
-    dataset = build_hand_dataset(yaml_file, args, is_train=is_train, scale_factor=scale_factor)
+
+def make_hand_data_loader(config, start_iter=0):
+    '''
+    generate distributed dataloader
+    '''
+    is_train = True if config['exper']['run_eval_only']==True else False
+    dataset = build_hand_dataset(config, is_train=is_train)
     logger = logging.getLogger(__name__)
     if is_train==True:
         shuffle = True
-        images_per_gpu = args.per_gpu_train_batch_size
+        images_per_gpu = config['exper']['per_gpu_train_batch_size']
         images_per_batch = images_per_gpu * get_world_size()
         iters_per_batch = len(dataset) // images_per_batch
-        num_iters = iters_per_batch * args.num_train_epochs
+        num_iters = iters_per_batch * config['exper']['num_train_epochs']
         logger.info("Train with {} images per GPU.".format(images_per_gpu))
         logger.info("Total batch size {}".format(images_per_batch))
         logger.info("Total training steps {}".format(num_iters))
     else:
         shuffle = False
-        images_per_gpu = args.per_gpu_eval_batch_size
+        images_per_gpu = config['exper']['per_gpu_train_batch_size']
         num_iters = None
         start_iter = 0
 
-    sampler = make_data_sampler(dataset, shuffle, is_distributed)
+    sampler = make_data_sampler(dataset, shuffle, config['exper']['distribute'])
     batch_sampler = make_batch_data_sampler(
         sampler, images_per_gpu, num_iters, start_iter
     )
     data_loader = torch.utils.data.DataLoader(
-        dataset, num_workers=args.num_workers, batch_sampler=batch_sampler,
+        dataset, num_workers=config['exper']['num_workers'], batch_sampler=batch_sampler,
         pin_memory=True,
     )
     return data_loader

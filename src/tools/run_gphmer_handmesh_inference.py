@@ -10,6 +10,7 @@ from __future__ import absolute_import, division, print_function
 import argparse
 import os
 import os.path as op
+os.chdir('/userhome/alanjjp/Project/MeshGraphormer')
 import code
 import json
 import time
@@ -80,6 +81,9 @@ def run_inference(args, image_list, Graphormer_model, mano, renderer, mesh_sampl
                 att_max_value = att[-1]
                 att_cpu = np.asarray(att_max_value.cpu().detach())
                 att_all.append(att_cpu)
+
+                print(pred_vertices[0][30::].detach())
+                print(pred_camera.detach())
 
                 # obtain 3d joints, which are regressed from the full mesh
                 pred_3d_joints_from_mesh = mano.get_3d_joints(pred_vertices)

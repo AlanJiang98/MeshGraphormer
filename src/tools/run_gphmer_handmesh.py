@@ -37,8 +37,8 @@ from src.utils.renderer import Renderer, visualize_reconstruction, visualize_rec
 from src.utils.metric_pampjpe import reconstruction_error
 from src.utils.geometric_layers import orthographic_projection
 
-from azureml.core.run import Run
-aml_run = Run.get_context()
+# from azureml.core.run import Run
+# aml_run = Run.get_context()
 
 def save_checkpoint(model, args, epoch, iteration, num_trial=10):
     checkpoint_dir = op.join(args.output_dir, 'checkpoint-{}-{}'.format(
@@ -125,8 +125,8 @@ def run(args, train_dataloader, Graphormer_model, mano_model, renderer, mesh_sam
 
     if args.distributed:
         Graphormer_model = torch.nn.parallel.DistributedDataParallel(
-            Graphormer_model, device_ids=[args.local_rank], 
-            output_device=args.local_rank,
+            Graphormer_model, device_ids=[int(os.environ["LOCAL_RANK"])],
+            output_device=int(os.environ["LOCAL_RANK"]),
             find_unused_parameters=True,
         )
 
@@ -234,10 +234,10 @@ def run(args, train_dataloader, Graphormer_model, mano_model, renderer, mesh_sam
                     optimizer.param_groups[0]['lr'])
             )
 
-            aml_run.log(name='Loss', value=float(log_losses.avg))
-            aml_run.log(name='3d joint Loss', value=float(log_loss_3djoints.avg))
-            aml_run.log(name='2d joint Loss', value=float(log_loss_2djoints.avg))
-            aml_run.log(name='vertex Loss', value=float(log_loss_vertices.avg))
+            # aml_run.log(name='Loss', value=float(log_losses.avg))
+            # aml_run.log(name='3d joint Loss', value=float(log_loss_3djoints.avg))
+            # aml_run.log(name='2d joint Loss', value=float(log_loss_2djoints.avg))
+            # aml_run.log(name='vertex Loss', value=float(log_loss_vertices.avg))
 
             visual_imgs = visualize_mesh(   renderer,
                                             annotations['ori_img'].detach(),
@@ -253,7 +253,7 @@ def run(args, train_dataloader, Graphormer_model, mano_model, renderer, mesh_sam
                 stamp = str(epoch) + '_' + str(iteration)
                 temp_fname = args.output_dir + 'visual_' + stamp + '.jpg'
                 cv2.imwrite(temp_fname, np.asarray(visual_imgs[:,:,::-1]*255))
-                aml_run.log_image(name='visual results', path=temp_fname)
+                # aml_run.log_image(name='visual results', path=temp_fname)
 
         if iteration % iters_per_epoch == 0:
             if epoch%10==0:
@@ -494,7 +494,7 @@ def parse_args():
                         help="Directory with all datasets, each in one subfolder")
     parser.add_argument("--train_yaml", default='imagenet2012/train.yaml', type=str, required=False,
                         help="Yaml file with all data for training.")
-    parser.add_argument("--val_yaml", default='imagenet2012/test.yaml', type=str, required=False,
+    parser.add_argument("--val_yaml", default='imagenet2012/test_freihand0.yaml', type=str, required=False,
                         help="Yaml file with all data for validation.")
     parser.add_argument("--num_workers", default=4, type=int, 
                         help="Workers in dataloader.")       
@@ -567,8 +567,8 @@ def parse_args():
                         help="cuda or cpu")
     parser.add_argument('--seed', type=int, default=88, 
                         help="random seed for initialization.")
-    parser.add_argument("--local_rank", type=int, default=0, 
-                        help="For distributed training.")
+    # parser.add_argument("--local_rank", type=int, default=0,
+    #                     help="For distributed training.")
     args = parser.parse_args()
     return args
 
@@ -582,10 +582,10 @@ def main(args):
     args.distributed = args.num_gpus > 1
     args.device = torch.device(args.device)
     if args.distributed:
-        print("Init distributed training on local rank {}".format(args.local_rank))
-        torch.cuda.set_device(args.local_rank)
+        print("Init distributed training on local rank {}".format(int(os.environ["LOCAL_RANK"])))
+        torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
         torch.distributed.init_process_group(
-            backend='nccl', init_method='env://'
+            backend='nccl'# , init_method='env://'
         )
         synchronize()
    
@@ -696,12 +696,12 @@ def main(args):
     logger.info("Training parameters %s", args)
 
     if args.run_eval_only==True:
-        val_dataloader = make_hand_data_loader(args, args.val_yaml, 
+        val_dataloader = make_hand_data_loader(args, args.val_yaml,
                                         args.distributed, is_train=False, scale_factor=args.img_scale_factor)
         run_eval_and_save(args, 'freihand', val_dataloader, _model, mano_model, renderer, mesh_sampler)
 
     else:
-        train_dataloader = make_hand_data_loader(args, args.train_yaml, 
+        train_dataloader = make_hand_data_loader(args, args.train_yaml,
                                             args.distributed, is_train=True, scale_factor=args.img_scale_factor)
         run(args, train_dataloader, _model, mano_model, renderer, mesh_sampler)
 
