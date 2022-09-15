@@ -15,6 +15,7 @@ from collections import OrderedDict
 import json
 from dv import AedatFile
 from dv import LegacyAedatFile
+import torch
 
 
 def img_from_base64(imagestring):
@@ -172,3 +173,86 @@ def undistortion_points(xy, K_old, dist, K_new=None, set_bound=False, width=346,
         und[:, 0] = np.clip(und[:, 0], 0, width-1)
         und[:, 1] = np.clip(und[:, 1], 0, height-1)
     return und, legal_indices
+
+
+def remove_unfeasible_events(events, height, width):
+    x_mask = (events[:, 0] >=0) * (events[:, 0] <= width-1)
+    y_mask = (events[:, 1] >=0) * (events[:, 1] <= height-1)
+    mask = x_mask * y_mask
+    return mask
+
+
+def get_intepolate_weight(events, weight, height, width, is_LNES=False):
+    top_y = torch.floor(events[:, 1:2])
+    bot_y = torch.floor(events[:, 1:2] + 1)
+    left_x = torch.floor(events[:, 0:1])
+    right_x = torch.floor(events[:, 0:1] + 1)
+
+    top_left = torch.cat([left_x, top_y], dim=1)
+    top_right = torch.cat([right_x, top_y], dim=1)
+    bottom_left = torch.cat([left_x, bot_y], dim=1)
+    bottom_right = torch.cat([right_x, bot_y], dim=1)
+
+    idx = torch.cat([top_left, top_right, bottom_left, bottom_right], dim=0)
+    events_tmp = torch.cat([events for i in range(4)], dim=0)
+    zeros = torch.zeros(idx.shape).type_as(idx)
+    weights_bi = torch.max(zeros, 1 - torch.abs(events_tmp[:, :2] - idx))
+    mask = remove_unfeasible_events(idx, height, width)
+    weight_ori = torch.cat([weight for i in range(4)], dim=0)
+    events_tmp[:, :2] = idx
+    if is_LNES:
+        weights_bi_tmp = torch.prod(weights_bi, dim=-1)
+        mask *= (weights_bi_tmp != 0)
+        weights_lnes = events_tmp[:, 3][mask]
+        events_tmp = events_tmp[mask]
+        weights_final, indices = torch.sort(weights_lnes, dim=0, descending=False)
+        events_final = events_tmp[indices]
+        return events_final, weights_final
+    else:
+        weights_final = torch.prod(weights_bi, dim=-1) * mask * weight_ori
+        return events_tmp[mask], weights_final[mask]
+
+
+def event_to_LNES(event_tmp, height=260, width=346, interpolate=False):
+    ts = event_tmp[:, 3]
+    img = torch.zeros((2, height, width), dtype=torch.float32)
+    if interpolate:
+        events, weights = get_intepolate_weight(event_tmp, ts, height, width, is_LNES=True)
+    else:
+        events, weights = event_tmp, ts
+    if events.dtype is not torch.long:
+        xyp = events[:, :3].clone().long()
+    img[xyp[:, 2], xyp[:, 1], xyp[:, 0]] = weights
+    return img[[1, 0], :, :]
+
+
+def event_count_to_frame(xy, weight, height=260, width=346, interpolate=False):
+    img = torch.zeros((height, width), dtype=torch.float32).to(xy.device)
+    if interpolate:
+        xys, weights = get_intepolate_weight(xy, weight, height, width)
+    else:
+        xys, weights = xy, weight
+    if xys.dtype is not torch.long:
+        xys = xys.clone().long()
+    img.index_put_((xys[:, 1], xys[:, 0]), weights, accumulate=True)
+    return img
+
+
+def event_to_channels(event_tmp, height=260, width=346, is_neg=False, interpolate=False):
+    mask_pos = event_tmp[:, 2] == 1
+    mask_neg = event_tmp[:, 2] == 0
+    pos_img = event_count_to_frame(event_tmp[:, :2], (1*mask_pos).float(), height, width, interpolate)
+    neg_img = event_count_to_frame(event_tmp[:, :2], (1*mask_neg).float(), height, width, interpolate)
+    if is_neg:
+        neg_img *= -1
+    return torch.stack([pos_img, neg_img])
+
+
+def event_representations(events, repre='LNES', hw=(260, 346)):
+    if repre == 'LNES':
+        ev_frame = event_to_LNES(events, height=hw[0], width=hw[1])
+    if repre == 'eci':
+        ev_frame = event_to_channels(events, height=hw[0], width=hw[1])
+    if repre == 'time_surface':
+        pass
+    return ev_frame

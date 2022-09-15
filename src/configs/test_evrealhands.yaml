@@ -25,6 +25,7 @@ model:
     hrnet_bb: 'models/hrnet/hrnetv2_w64_imagenet_pretrained.pth'
 
 exper:
+  debug: True
   run_eval_only: False
   resume_checkpoint: None
   num_workers: 4
@@ -41,6 +42,48 @@ exper:
   device: 'cuda'
   seed: 88
   distributed: False
+  preprocess:
+    ere_rate: 1.0
+    left_window: [3000, 1000000]
+    ev_repre: 'LNES' #'Lnes', 'eci'
+  rgb_only: True
+  augment:
+    geometry:
+      scale: 0.1
+      trans: 0.05
+      rot: 0.1
+    rgb_photometry:
+      colorjitter:
+        p: 0.2
+        brightness:
+          thre: [0.6, 4.]
+      gauss:
+        var: [30, 100]
+        p: 0.8
+      blur:
+        p: 0.2
+      gamma:
+        p: 0.3
+    event_photometry:
+      colorjitter:
+        p: 0.0
+        brightness:
+          thre: [ 0.6, 4. ]
+      gauss:
+        var: [ 30, 100 ]
+        p: 0.8
+      blur:
+        p: 0.2
+      gamma:
+        p: 0.0
+
+
+  bbox:
+    rate: 1.5
+    rgb:
+      size: 128
+    event:
+      size: 192
 
 
 

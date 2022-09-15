@@ -14,6 +14,7 @@ import code
 import json
 import time
 import datetime
+import warnings
 import torch
 import torchvision.models as models
 from torchvision.utils import make_grid
@@ -37,6 +38,7 @@ from src.utils.renderer import Renderer, visualize_reconstruction, visualize_rec
     visualize_reconstruction_no_text
 from src.utils.metric_pampjpe import reconstruction_error
 from src.utils.geometric_layers import orthographic_projection
+from src.configs.config_parser import ConfigParser
 
 
 # from azureml.core.run import Run
@@ -601,7 +603,7 @@ def visualize_mesh_no_text(renderer,
 def get_config():
     warnings.filterwarnings("ignore")
     parser = argparse.ArgumentParser('Training')
-    parser.add_argument('--config', type=str, default='./configs/test.yml')
+    parser.add_argument('--config', type=str, default='./configs/test_evrealhands.yaml')
     parser.add_argument('--config_merge', type=str, default='')
     parser.add_argument('--output_dir', type=str,
                         default='./output')
@@ -611,9 +613,9 @@ def get_config():
     if args.config_merge != '':
         config.merge_configs(args.config_merge)
     config = config.config
-    if args.outout_dir != '':
+    if args.output_dir != '':
         config['exper']['output_dir'] = args.output_dir
-    return config.config
+    return config
 
 
 def main(config):

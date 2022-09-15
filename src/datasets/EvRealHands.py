@@ -7,8 +7,25 @@ import json
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset
 import multiprocessing as mp
-from src.utils.dataset_utils import json_read, extract_data_from_aedat4, undistortion_points
+import matplotlib.pyplot as plt
+import roma
+from src.utils.dataset_utils import json_read, extract_data_from_aedat4, undistortion_points, event_representations
+from src.utils.joint_indices import indices_change
+import albumentations as A
+from src.configs.config_parser import ConfigParser
+from smplx import MANO
+from src.utils.augment import PhotometricAug
 
+from pytorch3d.structures import Meshes
+from pytorch3d.renderer import (
+    PointLights,
+    RasterizationSettings,
+    MeshRenderer,
+    MeshRasterizer,
+    SoftPhongShader,
+    TexturesVertex
+)
+from pytorch3d.utils import cameras_from_opencv_projection
 
 
 class EvRealHands(Dataset):
@@ -17,6 +34,11 @@ class EvRealHands(Dataset):
         self.data = {}
         self.data_config = None
         self.load_events_annotations()
+        self.process_samples()
+        smplx_path = '/userhome/alanjjp/data/smplx_models/mano'
+        self.mano_layer = MANO(smplx_path, use_pca=False, is_rhand=True)
+        self.rgb_augment = PhotometricAug(self.config['exper']['augment']['rgb_photometry'])
+        self.event_augment = PhotometricAug(self.config['exper']['augment']['event_photometry'])
         pass
 
     @staticmethod
@@ -27,7 +49,9 @@ class EvRealHands(Dataset):
         annot = json_read(os.path.join(dir, 'annot.json'))
         mano_ids = [int(id) for id in annot['manos'].keys()]
         mano_ids.sort()
-        annot['sample_ids'] = [str(id) for id in mano_ids]
+        mano_ids_np = np.array(mano_ids, dtype=np.int32)
+        indices = np.diff(mano_ids_np) == 1
+        annot['sample_ids'] = [str(id) for id in mano_ids_np[1:][indices]]
         K_old = np.array(annot['camera_info']['event']['K_old'])
         K_new = np.array(annot['camera_info']['event']['K_new'])
         dist = np.array(annot['camera_info']['event']['dist'])
@@ -50,27 +74,35 @@ class EvRealHands(Dataset):
             'event': events,
             'annot': annot,
         }
+        print('Seq {} is over!'.format(dir))
 
     def load_events_annotations(self):
         if self.config['exper']['run_eval_only']:
-            data_config = json_read(self.config['data']['eval_yaml'])
+            data_config = ConfigParser(self.config['data']['eval_yaml'])
         else:
-            data_config = json_read(self.config['data']['train_yaml'])
-        self.data_config = data_config
+            data_config = ConfigParser(self.config['data']['train_yaml'])
+        self.data_config = data_config.config
         all_sub_2_seq_ids = json_read(
-            osp.join(self.config['data']['data_dir'], data_config['seq_ids_path'])
+            osp.join(self.config['data']['data_dir'], self.data_config['seq_ids_path'])
         )
         self.seq_ids = []
-        for sub_id in data_config['sub_ids']:
-            self.seq_ids += all_sub_2_seq_ids[sub_id]
-        pool = mp.Pool(mp.cpu_count())
-        for seq_id in self.seq_ids:
-            pool.apply_async(EvRealHands.get_events_annotations_per_sequence,
-                             args=(osp.join(self.config['data']['data_dir'], seq_id), self.data),)
-        pool.close()
-        pool.join()
+        for sub_id in self.data_config['sub_ids']:
+            self.seq_ids += all_sub_2_seq_ids[str(sub_id)]
+        if self.config['exper']['debug']:
+            self.get_events_annotations_per_sequence(osp.join(self.config['data']['data_dir'], self.seq_ids[0]), self.data)
+            self.seq_ids = [self.seq_ids[0]]
+        else:
+            pool = mp.Pool(mp.cpu_count())
+            for seq_id in self.seq_ids:
+                pool.apply_async(EvRealHands.get_events_annotations_per_sequence,
+                                 args=(osp.join(self.config['data']['data_dir'], seq_id), self.data),)
+            pool.close()
+            pool.join()
 
     def process_samples(self):
+        '''
+        get samples for the dataset
+        '''
         self.sample_info = {
             'seq_ids': [],
             'cam_pair_ids': [],
@@ -86,10 +118,380 @@ class EvRealHands(Dataset):
         self.sample_info['samples_per_seq'] = np.array(samples_per_seq, dtype=np.int32)
         self.sample_info['samples_sum'] = np.cumsum(self.sample_info['samples_per_seq'])
 
+    def get_info_from_sample_id(self, sample_id):
+        '''
+        get image_id, event time stamp, annot id from sample id
+        '''
+        sample_info_index = np.sum(self.sample_info['samples_sum'] <= sample_id, dtype=np.int32)
+        seq_id = self.sample_info['seq_ids'][sample_info_index]
+        cam_pair = self.data_config['camera_pairs'][self.sample_info['cam_pair_ids'][sample_info_index]]
+        if sample_info_index == 0:
+            seq_loc = sample_id
+        else:
+            seq_loc = sample_id - self.sample_info['samples_sum'][sample_info_index-1]
+
+        annot_id = self.data[seq_id]['annot']['sample_ids'][seq_loc]
+        return seq_id, cam_pair, annot_id
+
+    def load_img(self, path, order='RGB'):
+        img = cv2.imread(path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
+        if not isinstance(img, np.ndarray):
+            raise IOError("Fail to read %s" % path)
+        if order == 'RGB':
+            img = img[:, :, ::-1].copy()
+
+        img = img.astype(np.float32)
+        return img
+
+    def get_annotations(self, seq_id, cam_pair, annot_id):
+        #TODO change to which camera's coordinate?
+        meta_data = {}
+        meta_data['delta_time'] = self.data[seq_id]['annot']['delta_time']
+        camera_pair_0 = self.data[seq_id]['annot']['camera_info'][cam_pair[0]]
+        meta_data['R_event_l'] = torch.tensor(camera_pair_0['R'], dtype=torch.float32).view(3, 3)
+        meta_data['K_event_l'] = torch.tensor(camera_pair_0['K'], dtype=torch.float32).view(3, 3)
+        meta_data['t_event_l'] = torch.tensor(camera_pair_0['T'], dtype=torch.float32).view(3) / 1000.
+        meta_data['R_event_r'], meta_data['K_event_r'], meta_data['t_event_r'] = \
+            meta_data['R_event_l'].clone(), meta_data['K_event_l'].clone(), meta_data['t_event_l'].clone()
+        camera_pair_1 = self.data[seq_id]['annot']['camera_info'][cam_pair[1]]
+        meta_data['R_rgb'] = torch.tensor(camera_pair_1['R'], dtype=torch.float32).view(3, 3)
+        meta_data['K_rgb'] = torch.tensor(camera_pair_1['K'], dtype=torch.float32).view(3, 3)
+        meta_data['t_rgb'] = torch.tensor(camera_pair_1['T'], dtype=torch.float32).view(3) / 1000.
+
+        meta_data['3d_joints'] = torch.tensor(self.data[seq_id]['annot']['3d_joints'][annot_id], dtype=torch.float32).view(-1, 3)[
+                             indices_change(2, 1)] / 1000.
+        mano = self.data[seq_id]['annot']['manos'][annot_id]
+        meta_data['mano'] = {}
+        meta_data['mano']['rot_pose'] = torch.tensor(mano['rot'], dtype=torch.float32).view(-1)
+        meta_data['mano']['hand_pose'] = torch.tensor(mano['hand_pose'], dtype=torch.float32).view(-1)
+        meta_data['mano']['shape'] = torch.tensor(mano['shape'], dtype=torch.float32).view(-1)
+        meta_data['mano']['trans'] = torch.tensor(mano['trans'], dtype=torch.float32).view(3)
+        meta_data['mano']['root_joint'] = torch.tensor(mano['root_joint'], dtype=torch.float32).view(3)
+        return meta_data
+
+    def get_event_repre(self, seq_id, timestamps):
+        timestamps = np.array(timestamps, dtype=np.float32)
+        event = self.data[seq_id]['event']
+        indices = np.searchsorted(
+            event[:, 3],
+            timestamps
+        )
+        if indices[0] == 0 or indices[-1] >= event.shape[0] - 1 or indices[-1]==indices[0]:
+            return torch.zeros((260, 346, 2))
+        else:
+            tmp_events = event[indices[0]:indices[1]].copy()
+            tmp_events[:, 3] = (tmp_events[:, 3] - timestamps[0]) / (timestamps[1] - timestamps[0])
+            tmp_events = torch.tensor(tmp_events, dtype=torch.float32)
+            ev_frame = event_representations(tmp_events, repre=self.config['exper']['preprocess']['ev_repre'], hw=(260, 346))
+            return ev_frame
+
+    def get_augment_param(self):
+        if not self.config['exper']['run_eval_only']:
+            scale_range, trans_range, rot_range = self.config['exper']['augment']['geometry']['scale'], \
+                                self.config['exper']['augment']['geometry']['trans'], \
+                                self.config['exper']['augment']['geometry']['rot']
+        else:
+            scale_range, trans_range, rot_range = 0, 0., 0.
+        # augmentation for event and rgb
+        augs = [[], []]
+        for i in range(2):
+            scale = min(2*scale_range, max(-2*scale_range, np.random.randn() * scale_range)) + 1
+            trans_x = min(2*trans_range, max(-2*trans_range, np.random.randn() * trans_range))
+            trans_y = min(2 * trans_range, max(-2 * trans_range, np.random.randn() * trans_range))
+            rot = min(2*rot_range, max(-2*rot_range, np.random.randn() * rot_range))
+            augs[i] += [trans_x, trans_y, rot, scale ]
+        return augs
+
+    def get_transform(self, R, t):
+        tf = torch.eye(4)
+        tf[:3, :3] = R
+        tf[:3, 3] = t
+        return tf
+
+    def augment_one_view(self, augs, frame, meta_data, view='rgb'):
+        if view == 'rgb' or 'event_l':
+            mano_key = 'mano_rgb'
+        else:
+            mano_key = 'mano'
+        K = meta_data['K_'+view]
+        R_wm = roma.rotvec_to_rotmat(meta_data[mano_key]['rot_pose'])
+        t_wm = meta_data[mano_key]['trans']
+
+        tf_wm = self.get_transform(R_wm, t_wm + meta_data[mano_key]['root_joint'])
+        tf_cw = self.get_transform(meta_data['R_'+view], meta_data['t_'+view])
+
+        tf_cm = tf_cw @ tf_wm
+
+        # trans augmentation
+        aff_trans_2d = torch.eye(3)
+        H, W, _ = frame.shape
+        trans_x_2d = augs[0] * W
+        trans_y_2d = augs[1] * H
+        aff_trans_2d[0, 2] = trans_x_2d
+        aff_trans_2d[1, 2] = trans_y_2d
+        tf_trans_3d = torch.eye(4)
+        trans_x_3d = trans_x_2d * tf_cm[2, 3] / meta_data['K_'+view][0, 0]
+        trans_y_3d = trans_y_2d * tf_cm[2, 3] / meta_data['K_' + view][1, 1]
+        tf_trans_3d[0, 3] = trans_x_3d
+        tf_trans_3d[1, 3] = trans_y_3d
+
+        # rotation
+        rot_2d = roma.rotvec_to_rotmat(augs[2] * torch.tensor([0.0, 0.0, 1.0]))
+        tf_rot_3d = self.get_transform(rot_2d, torch.zeros(3))
+        aff_rot_2d = torch.eye(3)
+        aff_rot_2d[:2, :2] = rot_2d[:2, :2]
+        aff_rot_2d[0, 2] = (1 - rot_2d[0, 0]) * K[0, 2] - rot_2d[0, 1] * K[1, 2]
+        aff_rot_2d[1, 2] = (1 - rot_2d[1, 1]) * K[1, 2] - rot_2d[1, 0] * K[0, 2]
+
+        tf_3d_tmp = tf_rot_3d @ tf_trans_3d @ tf_cm
+        # scale
+        tf_scale_3d = torch.eye(4)
+        # tf_scale_3d[2, 2] = 1.0 / augs[3]
+        tf_scale_3d[2, 3] = (1.0 / augs[3] - 1.) * tf_3d_tmp[2, 3]
+        aff_scale_2d = torch.eye(3)
+        aff_scale_2d[0, 0], aff_scale_2d[1, 1] = augs[3], augs[3]
+        aff_scale_2d[:2, 2] = (1-augs[3]) * K[:2, 2]
+
+        aff_2d_final = (aff_scale_2d @ aff_rot_2d @ aff_trans_2d)[:2, :]
+        frame_aug = cv2.warpAffine(np.array(frame), aff_2d_final.numpy(), (W, H), flags=cv2.INTER_LINEAR)
+
+        tf_3d_final = tf_scale_3d @ tf_rot_3d @ tf_trans_3d @ tf_cm
+        tf_cw = tf_3d_final @ tf_wm.inverse()
+
+        meta_data['R_'+view] = tf_cw[:3, :3]
+        meta_data['t_'+view] = tf_cw[:3, 3]
+
+        return frame_aug
+
+    def get_bbox_from_joints(self, K, R, t, joints, rate=1.5):
+        kps = (K @ (R @ joints.transpose(0, 1) + t.reshape(3, 1))).transpose(0, 1)
+        kps = kps[:, :2] / kps[:, 2:]
+        x_min = torch.min(kps[:, 0])
+        x_max = torch.max(kps[:, 0])
+        y_min = torch.min(kps[:, 1])
+        y_max = torch.max(kps[:, 1])
+        center_x = (x_min + x_max) / 2
+        center_y = (y_min + y_max) / 2
+        bbox_size = torch.max(torch.tensor([x_max-x_min, y_max-y_min])) * rate
+        return torch.tensor([center_x, center_y, bbox_size]).int()
+
+    def get_bbox_list(self, meta_data, rate=1.5):
+        bbox_rgb = self.get_bbox_from_joints(
+            meta_data['K_rgb'],
+            meta_data['R_rgb'],
+            meta_data['t_rgb'],
+            meta_data['3d_joints_rgb'],
+            rate,
+        )
+        bbox_l = self.get_bbox_from_joints(
+            meta_data['K_event_l'],
+            meta_data['R_event_l'],
+            meta_data['t_event_l'],
+            meta_data['3d_joints_rgb'],
+            rate,
+        )
+        bbox_r = self.get_bbox_from_joints(
+            meta_data['K_event_r'],
+            meta_data['R_event_r'],
+            meta_data['t_event_r'],
+            meta_data['3d_joints'],
+            rate,
+        )
+        return bbox_l, bbox_rgb, bbox_r
+
+    def crop(self, bbox, frame, size, hw=[260, 346]):
+        lf_top = (bbox[:2] - bbox[2] / 2).int()
+        rt_dom = lf_top + bbox[2].int()
+        if lf_top[0] < 0 or lf_top[1] < 0 or rt_dom[0] > hw[1] or rt_dom[1] > hw[0]:
+            frame = cv2.copyMakeBorder(frame, - min(0, lf_top[1]), max(rt_dom[1] - hw[0], 0),
+                            -min(0, lf_top[0]), max(rt_dom[0] - hw[1], 0), cv2.BORDER_REPLICATE)
+            rt_dom[1] += -min(0, lf_top[1])
+            lf_top[1] += -min(0, lf_top[1])
+            rt_dom[0] += -min(0, lf_top[0])
+            lf_top[0] += -min(0, lf_top[0])
+        frame_crop = frame[lf_top[1]: rt_dom[1], lf_top[0]:rt_dom[0]]
+        scale = size / bbox[2].float()
+        frame_resize = cv2.resize(np.array(frame_crop), (size, size), interpolation=cv2.INTER_AREA)
+        return lf_top, scale, frame_resize
+
+    def plotshow(self, img):
+        plt.imshow(img)
+        plt.show()
 
     def __getitem__(self, idx):
-        pass
+        seq_id, cam_pair, annot_id = self.get_info_from_sample_id(idx)
+        meta_data = self.get_annotations(seq_id, cam_pair, annot_id)
+        delta_time = meta_data['delta_time']
+        is_ere = torch.rand(1) < self.config['exper']['preprocess']['ere_rate']
+        if not is_ere:
+            rgb_path = osp.join(self.config['data']['data_dir'], seq_id, 'images', \
+                                cam_pair[1], 'image'+annot_id.rjust(4, '0')+'.jpg')
+            rgb_t = delta_time + int(annot_id) * 1e6 / 15.
+            ## get left time window
+            l_win_range = [torch.log10(torch.tensor(x)) for x in self.config['exper']['preprocess']['left_window']]
+            l_win = 10**(torch.rand(1)[0] * (l_win_range[1]-l_win_range[0])+l_win_range[0])
+            l_t = rgb_t - l_win
+            r_t = rgb_t
+            meta_data['3d_joints_rgb'] = meta_data['3d_joints'].clone()
+            meta_data['mano_rgb'] = meta_data['mano'].copy()
+        else:
+            ## TODO add previous mesh as supervision or not???
+            # TODO whether set the window distance between rgb frame and annotations
+            duration = 1
+            rgb_id = str(int(annot_id)-duration)
+            if rgb_id in self.data[seq_id]['annot']['mano'].keys():
+                meta_data_rgb = self.get_annotations(seq_id, cam_pair, rgb_id)
+                meta_data['3d_joints_rgb'] = meta_data_rgb['3d_joints'].clone()
+                meta_data['mano_rgb'] = meta_data_rgb['mano'].copy()
+            if rgb_id in self.data[seq_id]['annot']['frames'][cam_pair[1]]:
+                rgb_path = osp.join(self.config['data']['data_dir'], seq_id, 'images', cam_pair[1],\
+                                    'image' + rgb_id.rjust(4, '0') + '.jpg')
+                rgb_t = delta_time + int(rgb_id) * 1e6 / 15.
+                ## get left time window
+                l_win_range = [torch.log10(torch.tensor(x)) for x in self.config['exper']['preprocess']['left_window']]
+                l_win = 10 ** (torch.rand(1)[0] * (l_win_range[1] - l_win_range[0]) + l_win_range[0])
+                l_t = rgb_t - l_win
+                r_t = rgb_t + duration * 1e6 / 15.
+        rgb = self.load_img(rgb_path)
+        l_ev_frame = self.get_event_repre(seq_id, [l_t, rgb_t])
+        l_ev_frame = torch.cat([l_ev_frame.permute(1, 2, 0), torch.zeros((260, 346, 1))], dim=2)
+        r_ev_frame = self.get_event_repre(seq_id, [rgb_t, r_t])
+        r_ev_frame = torch.cat([r_ev_frame.permute(1,2,0), torch.zeros((260, 346, 1))], dim=2)
+
+        aug_params = self.get_augment_param()
+
+        self.render_hand(
+            meta_data['mano_rgb'],
+            meta_data['K_rgb'],
+            meta_data['R_rgb'],
+            meta_data['t_rgb'],
+            hw=[920, 1064],
+            img_bg=rgb / 255.,
+        )
+        self.render_hand(
+            meta_data['mano_rgb'],
+            meta_data['K_event_l'],
+            meta_data['R_event_l'],
+            meta_data['t_event_l'],
+            hw=[260, 346],
+            img_bg=l_ev_frame,
+        )
+        self.render_hand(
+            meta_data['mano'],
+            meta_data['K_event_r'],
+            meta_data['R_event_r'],
+            meta_data['t_event_r'],
+            hw=[260, 346],
+            img_bg=r_ev_frame,
+        )
+        print(aug_params[1])
+
+        # geometry augmentation
+        rgb_aug = self.augment_one_view(aug_params[1], rgb, meta_data, view='rgb')
+        l_ev_frame_aug = self.augment_one_view(aug_params[0], l_ev_frame, meta_data, view='event_l')
+        r_ev_frame_aug = self.augment_one_view(aug_params[0], r_ev_frame, meta_data, view='event_r')
+        # photometric augmentation
+        rgb_aug = self.rgb_augment(rgb_aug.astype(np.uint8)).astype(np.float32) / 255.
+        l_ev_frame_aug = self.event_augment((l_ev_frame_aug * 255).astype(np.uint8)).astype(np.float32) / 255.
+        r_ev_frame_aug = self.event_augment((r_ev_frame_aug * 255).astype(np.uint8)).astype(np.float32) / 255.
+
+        bbox_l, bbox_rgb, bbox_r = self.get_bbox_list(meta_data, self.config['exper']['bbox']['rate'])
+
+        rgb_aug = self.render_hand(
+            meta_data['mano_rgb'],
+            meta_data['K_rgb'],
+            meta_data['R_rgb'],
+            meta_data['t_rgb'],
+            hw=[920, 1064],
+            img_bg=rgb_aug,
+        )[0]
+
+        l_ev_frame_aug = self.render_hand(
+            meta_data['mano_rgb'],
+            meta_data['K_event_l'],
+            meta_data['R_event_l'],
+            meta_data['t_event_l'],
+            hw=[260, 346],
+            img_bg=l_ev_frame_aug,
+        )[0]
+
+        r_ev_frame_aug = self.render_hand(
+            meta_data['mano'],
+            meta_data['K_event_r'],
+            meta_data['R_event_r'],
+            meta_data['t_event_r'],
+            hw=[260, 346],
+            img_bg=r_ev_frame_aug,
+        )[0]
+        lt_rgb, sc_rgb, rgb_crop = self.crop(bbox_rgb, rgb_aug, self.config['exper']['bbox']['rgb']['size'], hw=[920, 1064])
+        lt_l_ev, sc_l_ev, l_ev_crop = self.crop(bbox_l, l_ev_frame_aug, self.config['exper']['bbox']['event']['size'],
+                                             hw=[260, 346])
+        lt_r_ev, sc_r_ev, r_ev_crop = self.crop(bbox_r, r_ev_frame_aug, self.config['exper']['bbox']['event']['size'],
+                                             hw=[260, 346])
+        self.plotshow(rgb_crop)
+        self.plotshow(l_ev_crop)
+        self.plotshow(r_ev_crop)
+
+
+
+        return rgb, l_ev_frame, r_ev_frame, meta_data
 
     def __len__(self):
-        pass
+        return int(self.sample_info['samples_sum'][-1])
 
+    def get_render(self, hw=[920, 1064]):
+        self.raster_settings = RasterizationSettings(
+            image_size=(hw[0], hw[1]),
+            faces_per_pixel=2,
+            perspective_correct=True,
+            blur_radius=0.,
+        )
+        self.lights = PointLights(
+            location=[[0, 2, 0]],
+            diffuse_color=((0.5, 0.5, 0.5),),
+            specular_color=((0.5, 0.5, 0.5),)
+        )
+        self.render = MeshRenderer(
+            rasterizer=MeshRasterizer(raster_settings=self.raster_settings),
+            shader=SoftPhongShader(lights=self.lights)
+        )
+
+    def render_hand(self, manos, K, R, t, hw, img_bg=None):
+        self.get_render(hw)
+        output = self.mano_layer(
+            global_orient=manos['rot_pose'].reshape(-1, 3),
+            hand_pose=manos['hand_pose'].reshape(-1, 45),
+            betas=manos['shape'].reshape(-1, 10),
+            transl=manos['trans'].reshape(-1, 3)
+        )
+        now_vertices = torch.bmm(R.reshape(-1, 3, 3), output.vertices.transpose(2, 1)).transpose(2, 1) + t.reshape(-1, 1, 3)
+        faces = torch.tensor(self.mano_layer.faces.astype(np.int32)).repeat(1, 1, 1).type_as(manos['trans'])
+        verts_rgb = torch.ones_like(self.mano_layer.v_template).type_as(manos['trans'])
+        verts_rgb = verts_rgb.expand(1, verts_rgb.shape[0], verts_rgb.shape[1])
+        textures = TexturesVertex(verts_rgb)
+        mesh = Meshes(
+            verts=now_vertices,
+            faces=faces,
+            textures=textures
+        )
+        cameras = cameras_from_opencv_projection(
+            R=torch.eye(3).repeat(1, 1, 1).type_as(manos['shape']),
+            tvec=torch.zeros(1, 3).type_as(manos['shape']),
+            camera_matrix=K.reshape(-1, 3, 3).type_as(manos['shape']),
+            image_size=torch.tensor([hw[0], hw[1]]).expand(1, 2).type_as(manos['shape'])
+        ).to(manos['trans'].device)
+        self.render.shader.to(manos['trans'].device)
+        res = self.render(
+            mesh,
+            cameras=cameras
+        )
+        img = res[..., :3]
+        img = img.reshape(-1, hw[0], hw[1], 3)
+        # plt.imshow(img[0].detach().cpu().numpy())
+        # plt.show()
+        if img_bg is not None:
+            mask = res[..., 3:4].reshape(-1, hw[0], hw[1], 1) != 0.
+            img = torch.clip(img * mask + mask.logical_not() * img_bg[None], 0, 1)
+        plt.imshow(img[0].detach().cpu().numpy())
+        plt.show()
+        return img
