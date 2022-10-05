@@ -22,7 +22,7 @@ We use the following script to train on FreiHAND dataset.
 python -m torch.distributed.launch --nproc_per_node=8 \
        src/tools/run_gphmer_handmesh.py \
        --train_yaml freihand/train.yaml \
-       --val_yaml freihand/test_freihand0.yaml \
+       --val_yaml freihand/test.yaml \
        --arch hrnet-w64 \
        --num_workers 4 \
        --per_gpu_train_batch_size 32 \
@@ -179,7 +179,7 @@ In the following script, we evaluate our model `graphormer_3dpw_state_dict.bin` 
 ```bash
 python -m torch.distributed.launch --nproc_per_node=8 \
           src/tools/run_gphmer_bodymesh.py \
-          --val_yaml 3dpw/test_freihand0.yaml \
+          --val_yaml 3dpw/test.yaml \
           --arch hrnet-w64 \
           --num_workers 4 \
           --per_gpu_eval_batch_size 25 \

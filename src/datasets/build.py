@@ -11,6 +11,9 @@ import logging
 import code
 from src.utils.comm import get_world_size
 from src.datasets.Freihand0 import FreiHand0
+from src.datasets.EvRealHands import EvRealHands
+from src.datasets.Interhand import Interhand
+from torch.utils.data import ConcatDataset
 
 
 class IterationBasedBatchSampler(torch.utils.data.sampler.BatchSampler):
@@ -66,46 +69,46 @@ def make_data_sampler(dataset, shuffle, distributed):
 #==============================================================================================
 
 
-
 def build_hand_dataset(config, is_train=True):
     '''
     generate dataset class for different datasets
     '''
-    if config['data']['dataset'] == 'freihand0':
+    datasets = []
+    if 'freihand0' in config['data']['dataset']:
         yaml_file = config['data']['train_yaml'] if is_train else config['data']['eval_yaml']
         print(yaml_file)
-        return FreiHand0(config, yaml_file, is_train, False, config['data']['img_scale_factor'])
-    if config['data']['dataset'] == 'freihand1':
+        datasets.append(FreiHand0(config, yaml_file, is_train, False, config['data']['img_scale_factor']))
+    if 'freihand1' in config['data']['dataset']:
         pass
-    if config['data']['dataset'] == 'interhand':
-        pass
-    if config['data']['dataset'] == 'evrealhands':
-        pass
+    if 'interhand' in config['data']['dataset']:
+        datasets.append(Interhand(config))
+    if 'evrealhands' in config['data']['dataset']:
+        datasets.append(EvRealHands(config))
+    return ConcatDataset(datasets)
 
 
 def make_hand_data_loader(config, start_iter=0):
     '''
     generate distributed dataloader
     '''
-    is_train = True if config['exper']['run_eval_only']==True else False
+    is_train = False if config['exper']['run_eval_only']==True else True
     dataset = build_hand_dataset(config, is_train=is_train)
-    logger = logging.getLogger(__name__)
     if is_train==True:
         shuffle = True
-        images_per_gpu = config['exper']['per_gpu_train_batch_size']
+        images_per_gpu = config['exper']['per_gpu_batch_size']
         images_per_batch = images_per_gpu * get_world_size()
         iters_per_batch = len(dataset) // images_per_batch
         num_iters = iters_per_batch * config['exper']['num_train_epochs']
-        logger.info("Train with {} images per GPU.".format(images_per_gpu))
-        logger.info("Total batch size {}".format(images_per_batch))
-        logger.info("Total training steps {}".format(num_iters))
+        print("Train with {} images per GPU.".format(images_per_gpu))
+        print("Total batch size {}".format(images_per_batch))
+        print("Total training steps {}".format(num_iters))
     else:
         shuffle = False
-        images_per_gpu = config['exper']['per_gpu_train_batch_size']
+        images_per_gpu = config['exper']['per_gpu_batch_size']
         num_iters = None
         start_iter = 0
 
-    sampler = make_data_sampler(dataset, shuffle, config['exper']['distribute'])
+    sampler = make_data_sampler(dataset, shuffle, config['exper']['distributed'])
     batch_sampler = make_batch_data_sampler(
         sampler, images_per_gpu, num_iters, start_iter
     )

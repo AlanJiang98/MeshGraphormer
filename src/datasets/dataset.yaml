@@ -1,0 +1,8 @@
+interhand:
+  data_dir: '/userhome/alanjjp/data/Interhand'
+  train_yaml: './src/datasets/interhand/train.yaml'
+  eval_yaml: './src/datasets/interhand/eval.yaml'
+evrealhands:
+  data_dir: '/userhome/alanjjp/data/EvRealHands'
+  train_yaml: './src/datasets/evrealhands/train.yaml'
+  eval_yaml: './src/datasets/evrealhands/eval.yaml'

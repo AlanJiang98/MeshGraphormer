@@ -1,6 +1,6 @@
 ## Installation
 
-Our codebase is developed based on Ubuntu 20.04 LTS and NVIDIA GPU cards. 
+Our codebase is developed based on Ubuntu 16.04 and NVIDIA GPU cards. 
 
 ### Requirements
 - Python 3.7

@@ -171,3 +171,14 @@ def reduce_dict(input_dict, average=True):
             values /= world_size
         reduced_dict = {k: v for k, v in zip(names, values)}
     return reduced_dict
+
+
+def to_device(x, device):
+    if type(x) is not dict:
+        if x is not None:
+            x = x.to(device)
+        return x
+    else:
+        for key in x.keys():
+            x[key] = to_device(x[key], device)
+        return x

@@ -11,10 +11,112 @@ from __future__ import print_function
 import numpy as np
 import cv2
 import code
-from opendr.camera import ProjectPoints
-from opendr.renderer import ColoredRenderer, TexturedRenderer
-from opendr.lighting import LambertianPointLight
+import torch
+# from opendr.camera import ProjectPoints
+# from opendr.renderer import ColoredRenderer, TexturedRenderer
+# from opendr.lighting import LambertianPointLight
 import random
+from pytorch3d.structures import Meshes
+from pytorch3d.renderer import (
+    PointLights,
+    RasterizationSettings,
+    MeshRenderer,
+    MeshRasterizer,
+    SoftPhongShader,
+    TexturesVertex
+)
+from pytorch3d.utils import cameras_from_opencv_projection
+from smplx import MANO
+
+
+class Render(object):
+    def __init__(self, config):
+        self.config = config
+        self.mano_layer = MANO(self.config['data']['smplx_path'], use_pca=False, is_rhand=True).to('cuda')
+
+    def visualize(self, K, R, t, hw, img_bg=None, manos=None, vertices=None, kps_2d=None):
+        batch_size = K.shape[0]
+        HAND_JOINT_COLOR_Lst = [(255, 255, 255),
+                                (255, 192, 203), (255, 192, 203), (255, 192, 203), (255, 192, 203),
+                                (0, 255, 0), (0, 255, 0), (0, 255, 0), (0, 255, 0),
+                                (0, 0, 255), (0, 0, 255), (0, 0, 255), (0, 0, 255),
+                                (128, 0, 128), (128, 0, 128), (128, 0, 128), (128, 0, 128),
+                                (128, 128, 0), (128, 128, 0), (128, 128, 0), (128, 128, 0)]
+        raster_settings = RasterizationSettings(
+            image_size=(hw[0], hw[1]),
+            faces_per_pixel=2,
+            perspective_correct=True,
+            blur_radius=0.,
+        )
+        lights = PointLights(
+            location=[[0, 2, 0]],
+            diffuse_color=((0.5, 0.5, 0.5),),
+            specular_color=((0.5, 0.5, 0.5),)
+        )
+        render = MeshRenderer(
+            rasterizer=MeshRasterizer(raster_settings=raster_settings),
+            shader=SoftPhongShader(lights=lights).to(K.device)
+        )
+        if vertices is not None:
+            vertices_ = vertices
+        else:
+            output = self.mano_layer(
+                global_orient=manos['rot_pose'].reshape(-1, 3),
+                hand_pose=manos['hand_pose'].reshape(-1, 45),
+                betas=manos['shape'].reshape(-1, 10),
+                transl=manos['trans'].reshape(-1, 3)
+            )
+            vertices_ = output.vertices
+        now_vertices = torch.bmm(R.reshape(-1, 3, 3), vertices_.transpose(2, 1)).transpose(2, 1) + t.reshape(-1, 1, 3)
+        faces = torch.tensor(self.mano_layer.faces.astype(np.int32)).repeat(batch_size, 1, 1).type_as(K)
+        shape_tmp = self.mano_layer.v_template.shape
+        verts_rgb = torch.ones((batch_size, shape_tmp[0], shape_tmp[1])).type_as(K)
+        textures = TexturesVertex(verts_rgb)
+        mesh = Meshes(
+            verts=now_vertices,
+            faces=faces,
+            textures=textures
+        )
+        cameras = cameras_from_opencv_projection(
+            R=torch.eye(3).repeat(batch_size, 1, 1).type_as(K),
+            tvec=torch.zeros(batch_size, 3).type_as(K),
+            camera_matrix=K.reshape(-1, 3, 3).type_as(K),
+            image_size=torch.tensor([hw[0], hw[1]]).expand(batch_size, 2).type_as(K)
+        ).to(K.device)
+        res = render(
+            mesh,
+            cameras=cameras
+        ).detach().cpu()
+        img_rendered = res[..., :3]
+        img_rendered = img_rendered.reshape(-1, hw[0], hw[1], 3)
+        # plt.imshow(img[0].detach().cpu().numpy())
+        # plt.show()
+        # todo image shape
+        if img_bg is not None:
+            mask = res[..., 3:4].reshape(-1, hw[0], hw[1], 1) != 0.
+            img_rendered = torch.clip(img_rendered * mask + mask.logical_not() * img_bg, 0, 1)
+
+        if kps_2d is not None:
+            batch_size = kps_2d.shape[0]
+            kps_2d_np = kps_2d.detach().cpu().numpy()
+            frames_np = img_bg.detach().cpu().numpy()
+            frame_list = []
+            for i in range(batch_size):
+                img = np.ascontiguousarray(frames_np[i] * 255, dtype=np.uint8)
+                for joint_idx, kp in enumerate(kps_2d_np[i]):
+                    cv2.circle(img, (int(kp[0]), int(kp[1])), 2, HAND_JOINT_COLOR_Lst[joint_idx], -1)
+                    if joint_idx % 4 == 1:
+                        cv2.line(img, (int(kps_2d_np[i][0][0]), int(kps_2d_np[i][0][1])), (int(kp[0]), int(kp[1])),
+                                 HAND_JOINT_COLOR_Lst[joint_idx], 1)  # connect to root
+                    elif joint_idx != 0:
+                        cv2.line(img, (int(kps_2d_np[i][joint_idx - 1][0]), int(kps_2d_np[i][joint_idx - 1][1])),
+                                 (int(kp[0]), int(kp[1])),
+                                 HAND_JOINT_COLOR_Lst[joint_idx], 1)  # connect to root
+                frame_list.append(img)
+            img_2d = np.vstack([frame[None, ...] for frame in frame_list])
+            return img_rendered.numpy(), img_2d
+
+        return img_rendered
 
 
 # Rotate the points by a specified angle.
@@ -509,183 +611,183 @@ def cam2pixel(cam_coord, f, c):
     return img_coord
 
 
-class Renderer(object):
-    """
-    Render mesh using OpenDR for visualization.
-    """
-
-    def __init__(self, width=800, height=600, near=0.5, far=1000, faces=None):
-        self.colors = {'hand': [.9, .9, .9], 'pink': [.9, .7, .7], 'light_blue': [0.65098039, 0.74117647, 0.85882353] }
-        self.width = width
-        self.height = height
-        self.faces = faces
-        self.renderer = ColoredRenderer()
-
-    def render(self, vertices, faces=None, img=None,
-               camera_t=np.zeros([3], dtype=np.float32),
-               camera_rot=np.zeros([3], dtype=np.float32),
-               camera_center=None,
-               use_bg=False,
-               bg_color=(0.0, 0.0, 0.0),
-               body_color=None,
-               focal_length=5000,
-               disp_text=False,
-               gt_keyp=None,
-               pred_keyp=None,
-               **kwargs):
-        if img is not None:
-            height, width = img.shape[:2]
-        else:
-            height, width = self.height, self.width
-
-        if faces is None:
-            faces = self.faces
-
-        if camera_center is None:
-            camera_center = np.array([width * 0.5,
-                                      height * 0.5])
-
-        self.renderer.camera = ProjectPoints(rt=camera_rot,
-                                             t=camera_t,
-                                             f=focal_length * np.ones(2),
-                                             c=camera_center,
-                                             k=np.zeros(5))
-        dist = np.abs(self.renderer.camera.t.r[2] -
-                      np.mean(vertices, axis=0)[2])
-        far = dist + 20
-
-        self.renderer.frustum = {'near': 1.0, 'far': far,
-                                 'width': width,
-                                 'height': height}
-
-        if img is not None:
-            if use_bg:
-                self.renderer.background_image = img
-            else:
-                self.renderer.background_image = np.ones_like(
-                    img) * np.array(bg_color)
-
-        if body_color is None:
-            color = self.colors['light_blue']
-        else:
-            color = self.colors[body_color]
-
-        if isinstance(self.renderer, TexturedRenderer):
-            color = [1.,1.,1.]
-
-        self.renderer.set(v=vertices, f=faces,
-                          vc=color, bgcolor=np.ones(3))
-        albedo = self.renderer.vc
-        # Construct Back Light (on back right corner)
-        yrot = np.radians(120)
-
-        self.renderer.vc = LambertianPointLight(
-            f=self.renderer.f,
-            v=self.renderer.v,
-            num_verts=self.renderer.v.shape[0],
-            light_pos=rotateY(np.array([-200, -100, -100]), yrot),
-            vc=albedo,
-            light_color=np.array([1, 1, 1]))
-
-        # Construct Left Light
-        self.renderer.vc += LambertianPointLight(
-            f=self.renderer.f,
-            v=self.renderer.v,
-            num_verts=self.renderer.v.shape[0],
-            light_pos=rotateY(np.array([800, 10, 300]), yrot),
-            vc=albedo,
-            light_color=np.array([1, 1, 1]))
-
-        #  Construct Right Light
-        self.renderer.vc += LambertianPointLight(
-            f=self.renderer.f,
-            v=self.renderer.v,
-            num_verts=self.renderer.v.shape[0],
-            light_pos=rotateY(np.array([-500, 500, 1000]), yrot),
-            vc=albedo,
-            light_color=np.array([.7, .7, .7]))
-
-        return self.renderer.r
-
-
-    def render_vertex_color(self, vertices, faces=None, img=None,
-               camera_t=np.zeros([3], dtype=np.float32),
-               camera_rot=np.zeros([3], dtype=np.float32),
-               camera_center=None,
-               use_bg=False,
-               bg_color=(0.0, 0.0, 0.0),
-               vertex_color=None,
-               focal_length=5000,
-               disp_text=False,
-               gt_keyp=None,
-               pred_keyp=None,
-               **kwargs):
-        if img is not None:
-            height, width = img.shape[:2]
-        else:
-            height, width = self.height, self.width
-
-        if faces is None:
-            faces = self.faces
-
-        if camera_center is None:
-            camera_center = np.array([width * 0.5,
-                                      height * 0.5])
-
-        self.renderer.camera = ProjectPoints(rt=camera_rot,
-                                             t=camera_t,
-                                             f=focal_length * np.ones(2),
-                                             c=camera_center,
-                                             k=np.zeros(5))
-        dist = np.abs(self.renderer.camera.t.r[2] -
-                      np.mean(vertices, axis=0)[2])
-        far = dist + 20
-
-        self.renderer.frustum = {'near': 1.0, 'far': far,
-                                 'width': width,
-                                 'height': height}
-
-        if img is not None:
-            if use_bg:
-                self.renderer.background_image = img
-            else:
-                self.renderer.background_image = np.ones_like(
-                    img) * np.array(bg_color)
-
-        if vertex_color is None:
-            vertex_color = self.colors['light_blue']
-
-
-        self.renderer.set(v=vertices, f=faces,
-                          vc=vertex_color, bgcolor=np.ones(3))
-        albedo = self.renderer.vc
-        # Construct Back Light (on back right corner)
-        yrot = np.radians(120)
-
-        self.renderer.vc = LambertianPointLight(
-            f=self.renderer.f,
-            v=self.renderer.v,
-            num_verts=self.renderer.v.shape[0],
-            light_pos=rotateY(np.array([-200, -100, -100]), yrot),
-            vc=albedo,
-            light_color=np.array([1, 1, 1]))
-
-        # Construct Left Light
-        self.renderer.vc += LambertianPointLight(
-            f=self.renderer.f,
-            v=self.renderer.v,
-            num_verts=self.renderer.v.shape[0],
-            light_pos=rotateY(np.array([800, 10, 300]), yrot),
-            vc=albedo,
-            light_color=np.array([1, 1, 1]))
-
-        #  Construct Right Light
-        self.renderer.vc += LambertianPointLight(
-            f=self.renderer.f,
-            v=self.renderer.v,
-            num_verts=self.renderer.v.shape[0],
-            light_pos=rotateY(np.array([-500, 500, 1000]), yrot),
-            vc=albedo,
-            light_color=np.array([.7, .7, .7]))
-
-        return self.renderer.r
+# class Renderer(object):
+#     """
+#     Render mesh using OpenDR for visualization.
+#     """
+#
+#     def __init__(self, width=800, height=600, near=0.5, far=1000, faces=None):
+#         self.colors = {'hand': [.9, .9, .9], 'pink': [.9, .7, .7], 'light_blue': [0.65098039, 0.74117647, 0.85882353] }
+#         self.width = width
+#         self.height = height
+#         self.faces = faces
+#         self.renderer = ColoredRenderer()
+#
+#     def render(self, vertices, faces=None, img=None,
+#                camera_t=np.zeros([3], dtype=np.float32),
+#                camera_rot=np.zeros([3], dtype=np.float32),
+#                camera_center=None,
+#                use_bg=False,
+#                bg_color=(0.0, 0.0, 0.0),
+#                body_color=None,
+#                focal_length=5000,
+#                disp_text=False,
+#                gt_keyp=None,
+#                pred_keyp=None,
+#                **kwargs):
+#         if img is not None:
+#             height, width = img.shape[:2]
+#         else:
+#             height, width = self.height, self.width
+#
+#         if faces is None:
+#             faces = self.faces
+#
+#         if camera_center is None:
+#             camera_center = np.array([width * 0.5,
+#                                       height * 0.5])
+#
+#         self.renderer.camera = ProjectPoints(rt=camera_rot,
+#                                              t=camera_t,
+#                                              f=focal_length * np.ones(2),
+#                                              c=camera_center,
+#                                              k=np.zeros(5))
+#         dist = np.abs(self.renderer.camera.t.r[2] -
+#                       np.mean(vertices, axis=0)[2])
+#         far = dist + 20
+#
+#         self.renderer.frustum = {'near': 1.0, 'far': far,
+#                                  'width': width,
+#                                  'height': height}
+#
+#         if img is not None:
+#             if use_bg:
+#                 self.renderer.background_image = img
+#             else:
+#                 self.renderer.background_image = np.ones_like(
+#                     img) * np.array(bg_color)
+#
+#         if body_color is None:
+#             color = self.colors['light_blue']
+#         else:
+#             color = self.colors[body_color]
+#
+#         if isinstance(self.renderer, TexturedRenderer):
+#             color = [1.,1.,1.]
+#
+#         self.renderer.set(v=vertices, f=faces,
+#                           vc=color, bgcolor=np.ones(3))
+#         albedo = self.renderer.vc
+#         # Construct Back Light (on back right corner)
+#         yrot = np.radians(120)
+#
+#         self.renderer.vc = LambertianPointLight(
+#             f=self.renderer.f,
+#             v=self.renderer.v,
+#             num_verts=self.renderer.v.shape[0],
+#             light_pos=rotateY(np.array([-200, -100, -100]), yrot),
+#             vc=albedo,
+#             light_color=np.array([1, 1, 1]))
+#
+#         # Construct Left Light
+#         self.renderer.vc += LambertianPointLight(
+#             f=self.renderer.f,
+#             v=self.renderer.v,
+#             num_verts=self.renderer.v.shape[0],
+#             light_pos=rotateY(np.array([800, 10, 300]), yrot),
+#             vc=albedo,
+#             light_color=np.array([1, 1, 1]))
+#
+#         #  Construct Right Light
+#         self.renderer.vc += LambertianPointLight(
+#             f=self.renderer.f,
+#             v=self.renderer.v,
+#             num_verts=self.renderer.v.shape[0],
+#             light_pos=rotateY(np.array([-500, 500, 1000]), yrot),
+#             vc=albedo,
+#             light_color=np.array([.7, .7, .7]))
+#
+#         return self.renderer.r
+#
+#
+#     def render_vertex_color(self, vertices, faces=None, img=None,
+#                camera_t=np.zeros([3], dtype=np.float32),
+#                camera_rot=np.zeros([3], dtype=np.float32),
+#                camera_center=None,
+#                use_bg=False,
+#                bg_color=(0.0, 0.0, 0.0),
+#                vertex_color=None,
+#                focal_length=5000,
+#                disp_text=False,
+#                gt_keyp=None,
+#                pred_keyp=None,
+#                **kwargs):
+#         if img is not None:
+#             height, width = img.shape[:2]
+#         else:
+#             height, width = self.height, self.width
+#
+#         if faces is None:
+#             faces = self.faces
+#
+#         if camera_center is None:
+#             camera_center = np.array([width * 0.5,
+#                                       height * 0.5])
+#
+#         self.renderer.camera = ProjectPoints(rt=camera_rot,
+#                                              t=camera_t,
+#                                              f=focal_length * np.ones(2),
+#                                              c=camera_center,
+#                                              k=np.zeros(5))
+#         dist = np.abs(self.renderer.camera.t.r[2] -
+#                       np.mean(vertices, axis=0)[2])
+#         far = dist + 20
+#
+#         self.renderer.frustum = {'near': 1.0, 'far': far,
+#                                  'width': width,
+#                                  'height': height}
+#
+#         if img is not None:
+#             if use_bg:
+#                 self.renderer.background_image = img
+#             else:
+#                 self.renderer.background_image = np.ones_like(
+#                     img) * np.array(bg_color)
+#
+#         if vertex_color is None:
+#             vertex_color = self.colors['light_blue']
+#
+#
+#         self.renderer.set(v=vertices, f=faces,
+#                           vc=vertex_color, bgcolor=np.ones(3))
+#         albedo = self.renderer.vc
+#         # Construct Back Light (on back right corner)
+#         yrot = np.radians(120)
+#
+#         self.renderer.vc = LambertianPointLight(
+#             f=self.renderer.f,
+#             v=self.renderer.v,
+#             num_verts=self.renderer.v.shape[0],
+#             light_pos=rotateY(np.array([-200, -100, -100]), yrot),
+#             vc=albedo,
+#             light_color=np.array([1, 1, 1]))
+#
+#         # Construct Left Light
+#         self.renderer.vc += LambertianPointLight(
+#             f=self.renderer.f,
+#             v=self.renderer.v,
+#             num_verts=self.renderer.v.shape[0],
+#             light_pos=rotateY(np.array([800, 10, 300]), yrot),
+#             vc=albedo,
+#             light_color=np.array([1, 1, 1]))
+#
+#         #  Construct Right Light
+#         self.renderer.vc += LambertianPointLight(
+#             f=self.renderer.f,
+#             v=self.renderer.v,
+#             num_verts=self.renderer.v.shape[0],
+#             light_pos=rotateY(np.array([-500, 500, 1000]), yrot),
+#             vc=albedo,
+#             light_color=np.array([.7, .7, .7]))
+#
+#         return self.renderer.r

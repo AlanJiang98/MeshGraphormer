@@ -1,9 +1,8 @@
 data:
   data_dir: '/userhome/alanjjp/data/EvRealHands'
-  img_scale_factor: 0.25
   dataset: 'evrealhands'
   train_yaml: './src/datasets/evrealhands/train.yaml'
-  eval_yaml: './src/datasets/evrealhands/train.yaml'
+  eval_yaml: './src/datasets/evrealhands/eval.yaml'
   event: True
   smplx_path: '/userhome/alanjjp/data/smplx_models/mano'
   rgb_hw: [920, 1064]
@@ -13,10 +12,9 @@ model:
   bert_config: 'src/modeling/bert/bert-base-uncased/'
   method:
     framework: 'encoder_based' # 'encoder_decoder_based'
-    rgb_only: True
-    ere: True
+    ere_usage: [False, True, False]
   tfm:
-    output_attentions: False
+    output_attentions: True
     drop_out: 0.1
     mesh_type: 'hand'
     num_hidden_layers: 4
@@ -29,30 +27,29 @@ model:
   backbone:
     arch: 'hrnet'
     hrnet_yaml: 'models/hrnet/cls_hrnet_w64_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
-    hrnet_bb: 'models/hrnet/hrnetv2_w64_imagenet_pretrained.pth'
+    hrnet_bb: ''#'models/hrnet/hrnetv2_w64_imagenet_pretrained.pth'
   decoder:
 
 
 exper:
-  debug: True
-  run_eval_only: True
+  debug: False
+  run_eval_only: False
   resume_checkpoint: None
-  num_workers: 6
+  num_workers: 4
   output_dir: './output'
-  per_gpu_train_batch_size: 32
-  per_gpu_eval_batch_size: 32
+  per_gpu_batch_size: 32
   lr: 0.0001
-  num_train_epochs: 100
+  num_train_epochs: 200
   device: 'cuda'
   seed: 88
-  distributed: False
+  distributed: True
   preprocess:
-    ere_rate: 1.0
+    ere_rate: 0.0
     left_window: [3000, 1000000]
     ev_repre: 'LNES' #'Lnes', 'eci'
     event_range: 'num' # 'time'
     num_window: 5000
-
+    cam_view: 'rgb' # 'world', 'rgb', 'event
   augment:
     geometry:
       scale: 0.1
@@ -98,7 +95,6 @@ eval:
   multiscale_inference: False
   rot: 0
   sc: 1.0
-  ere: True
   fast_fps: 120
   fast_window: 5000
   output:
@@ -107,6 +103,7 @@ eval:
     attention_map: True
     errors: True
     rendered: True
+    vis_rendered: 'rgb'
 
 utils:
-  logging_steps: 100
+  logging_steps: 30

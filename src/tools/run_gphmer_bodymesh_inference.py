@@ -3,14 +3,13 @@ Copyright (c) Microsoft Corporation.
 Licensed under the MIT license.
 
 End-to-end inference codes for 
-3D hand mesh reconstruction from an image
+3D human body mesh reconstruction from an image
 """
 
 from __future__ import absolute_import, division, print_function
 import argparse
 import os
 import os.path as op
-os.chdir('/userhome/alanjjp/Project/MeshGraphormer')
 import code
 import json
 import time
@@ -22,18 +21,18 @@ import gc
 import numpy as np
 import cv2
 from src.modeling.bert import BertConfig, Graphormer
-from src.modeling.bert import Graphormer_Hand_Network as Graphormer_Network
-from src.modeling._mano import MANO, Mesh
+from src.modeling.bert import Graphormer_Body_Network as Graphormer_Network
+from src.modeling._smpl import SMPL, Mesh
 from src.modeling.hrnet.hrnet_cls_net_gridfeat import get_cls_net_gridfeat
 from src.modeling.hrnet.config import config as hrnet_config
 from src.modeling.hrnet.config import update_config as hrnet_update_config
 import src.modeling.data.config as cfg
-from src.datasets.build import make_hand_data_loader
+from src.datasets.build import make_data_loader
 
 from src.utils.logger import setup_logger
 from src.utils.comm import synchronize, is_main_process, get_rank, get_world_size, all_gather
 from src.utils.miscellaneous import mkdir, set_seed
-from src.utils.metric_logger import AverageMeter
+from src.utils.metric_logger import AverageMeter, EvalMetricsLogger
 from src.utils.renderer import Renderer, visualize_reconstruction_and_att_local, visualize_reconstruction_no_text
 from src.utils.metric_pampjpe import reconstruction_error
 from src.utils.geometric_layers import orthographic_projection
@@ -54,15 +53,14 @@ transform_visualize = transforms.Compose([
                     transforms.CenterCrop(224),
                     transforms.ToTensor()])
 
-def run_inference(args, image_list, Graphormer_model, mano, renderer, mesh_sampler):
-# switch to evaluate mode
+def run_inference(args, image_list, Graphormer_model, smpl, renderer, mesh_sampler):
+    # switch to evaluate mode
     Graphormer_model.eval()
-    mano.eval()
+    smpl.eval()
     with torch.no_grad():
         for image_file in image_list:
             if 'pred' not in image_file:
                 att_all = []
-                print(image_file)
                 img = Image.open(image_file)
                 img_tensor = transform(img)
                 img_visual = transform_visualize(img)
@@ -70,11 +68,14 @@ def run_inference(args, image_list, Graphormer_model, mano, renderer, mesh_sampl
                 batch_imgs = torch.unsqueeze(img_tensor, 0).cuda()
                 batch_visual_imgs = torch.unsqueeze(img_visual, 0).cuda()
                 # forward-pass
-                pred_camera, pred_3d_joints, pred_vertices_sub, pred_vertices, hidden_states, att = Graphormer_model(batch_imgs, mano, mesh_sampler)
+                pred_camera, pred_3d_joints, pred_vertices_sub2, pred_vertices_sub, pred_vertices, hidden_states, att = Graphormer_model(batch_imgs, smpl, mesh_sampler)
+                    
                 # obtain 3d joints from full mesh
-                pred_3d_joints_from_mesh = mano.get_3d_joints(pred_vertices)
-                pred_3d_pelvis = pred_3d_joints_from_mesh[:,cfg.J_NAME.index('Wrist'),:]
-                pred_3d_joints_from_mesh = pred_3d_joints_from_mesh - pred_3d_pelvis[:, None, :]
+                pred_3d_joints_from_smpl = smpl.get_h36m_joints(pred_vertices)
+
+                pred_3d_pelvis = pred_3d_joints_from_smpl[:,cfg.H36M_J17_NAME.index('Pelvis'),:]
+                pred_3d_joints_from_smpl = pred_3d_joints_from_smpl[:,cfg.H36M_J17_TO_J14,:]
+                pred_3d_joints_from_smpl = pred_3d_joints_from_smpl - pred_3d_pelvis[:, None, :]
                 pred_vertices = pred_vertices - pred_3d_pelvis[:, None, :]
 
                 # save attantion
@@ -82,33 +83,31 @@ def run_inference(args, image_list, Graphormer_model, mano, renderer, mesh_sampl
                 att_cpu = np.asarray(att_max_value.cpu().detach())
                 att_all.append(att_cpu)
 
-                print(pred_vertices[0][30::].detach())
-                print(pred_camera.detach())
-
                 # obtain 3d joints, which are regressed from the full mesh
-                pred_3d_joints_from_mesh = mano.get_3d_joints(pred_vertices)
-                # obtain 2d joints, which are projected from 3d joints of mesh
-                pred_2d_joints_from_mesh = orthographic_projection(pred_3d_joints_from_mesh.contiguous(), pred_camera.contiguous())
-                pred_2d_coarse_vertices_from_mesh = orthographic_projection(pred_vertices_sub.contiguous(), pred_camera.contiguous())
-
-
+                pred_3d_joints_from_smpl = smpl.get_h36m_joints(pred_vertices)
+                pred_3d_joints_from_smpl = pred_3d_joints_from_smpl[:,cfg.H36M_J17_TO_J14,:]
+                # obtain 2d joints, which are projected from 3d joints of smpl mesh
+                pred_2d_joints_from_smpl = orthographic_projection(pred_3d_joints_from_smpl, pred_camera)
+                pred_2d_431_vertices_from_smpl = orthographic_projection(pred_vertices_sub2, pred_camera)
                 visual_imgs_output = visualize_mesh( renderer, batch_visual_imgs[0],
-                                                            pred_vertices[0].detach(), 
-                                                            pred_camera.detach())
+                                                                pred_vertices[0].detach(), 
+                                                                pred_camera.detach())
                 # visual_imgs_output = visualize_mesh_and_attention( renderer, batch_visual_imgs[0],
                 #                                             pred_vertices[0].detach(), 
-                #                                             pred_vertices_sub[0].detach(), 
-                #                                             pred_2d_coarse_vertices_from_mesh[0].detach(),
-                #                                             pred_2d_joints_from_mesh[0].detach(),
+                #                                             pred_vertices_sub2[0].detach(), 
+                #                                             pred_2d_431_vertices_from_smpl[0].detach(),
+                #                                             pred_2d_joints_from_smpl[0].detach(),
                 #                                             pred_camera.detach(),
                 #                                             att[-1][0].detach())
+
                 visual_imgs = visual_imgs_output.transpose(1,2,0)
                 visual_imgs = np.asarray(visual_imgs)
                         
                 temp_fname = image_file[:-4] + '_graphormer_pred.jpg'
                 print('save to ', temp_fname)
                 cv2.imwrite(temp_fname, np.asarray(visual_imgs[:,:,::-1]*255))
-    return
+
+    return 
 
 def visualize_mesh( renderer, images,
                     pred_vertices_full,
@@ -142,17 +141,18 @@ def visualize_mesh_and_attention( renderer, images,
     rend_img = rend_img.transpose(2,0,1)
     return rend_img
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
     #########################################################
     # Data related arguments
     #########################################################
     parser.add_argument("--num_workers", default=4, type=int, 
-                        help="Workers in dataloader.")       
+                        help="Workers in dataloader.")
     parser.add_argument("--img_scale_factor", default=1, type=int, 
-                        help="adjust image resolution.")  
-    parser.add_argument("--image_file_or_path", default='./samples/hand', type=str, 
-                        help="test data")
+                        help="adjust image resolution.")
+    parser.add_argument("--image_file_or_path", default='./samples/human-body', type=str, 
+                        help="test data") 
     #########################################################
     # Loading/saving checkpoints
     #########################################################
@@ -164,11 +164,11 @@ def parse_args():
                         help="The output directory to save checkpoint and test results.")
     parser.add_argument("--config_name", default="", type=str, 
                         help="Pretrained config name or path if not the same as model_name.")
-    parser.add_argument('-a', '--arch', default='hrnet-w64',
-                    help='CNN backbone architecture: hrnet-w64, hrnet, resnet50')
     #########################################################
     # Model architectures
     #########################################################
+    parser.add_argument('-a', '--arch', default='hrnet-w64',
+                    help='CNN backbone architecture: hrnet-w64, hrnet, resnet50')
     parser.add_argument("--num_hidden_layers", default=4, type=int, required=False, 
                         help="Update model config if given")
     parser.add_argument("--hidden_size", default=-1, type=int, required=False, 
@@ -181,11 +181,11 @@ def parse_args():
     parser.add_argument("--input_feat_dim", default='2051,512,128', type=str, 
                         help="The Image Feature Dimension.")          
     parser.add_argument("--hidden_feat_dim", default='1024,256,64', type=str, 
-                        help="The Image Feature Dimension.")  
+                        help="The Image Feature Dimension.")   
     parser.add_argument("--which_gcn", default='0,0,1', type=str, 
                         help="which encoder block to have graph conv. Encoder1, Encoder2, Encoder3. Default: only Encoder3 has graph conv") 
-    parser.add_argument("--mesh_type", default='hand', type=str, help="body or hand") 
-
+    parser.add_argument("--mesh_type", default='body', type=str, help="body or hand") 
+    parser.add_argument("--interm_size_scale", default=2, type=int)
     #########################################################
     # Others
     #########################################################
@@ -194,8 +194,10 @@ def parse_args():
                         help="cuda or cpu")
     parser.add_argument('--seed', type=int, default=88, 
                         help="random seed for initialization.")
+
     args = parser.parse_args()
     return args
+
 
 def main(args):
     global logger
@@ -203,35 +205,36 @@ def main(args):
     args.num_gpus = int(os.environ['WORLD_SIZE']) if 'WORLD_SIZE' in os.environ else 1
     os.environ['OMP_NUM_THREADS'] = str(args.num_workers)
     print('set os.environ[OMP_NUM_THREADS] to {}'.format(os.environ['OMP_NUM_THREADS']))
-   
+
+    args.distributed = args.num_gpus > 1
+    args.device = torch.device(args.device)
+    
     mkdir(args.output_dir)
     logger = setup_logger("Graphormer", args.output_dir, get_rank())
     set_seed(args.seed, args.num_gpus)
     logger.info("Using {} GPUs".format(args.num_gpus))
 
-    # # Mesh and MANO utils
-    # mano_model = MANO().to(args.device)
-    # mano_model.layer = mano_model.layer.cuda()
-    # mesh_sampler = Mesh()
-    #
-    # # Renderer for visualization
-    # renderer = Renderer(faces=mano_model.face)
+    # Mesh and SMPL utils
+    smpl = SMPL().to(args.device)
+    mesh_sampler = Mesh()
 
-    # Load pretrained model
+    # Renderer for visualization
+    renderer = Renderer(faces=smpl.faces.cpu().numpy())
+
+    # Load model
     trans_encoder = []
 
     input_feat_dim = [int(item) for item in args.input_feat_dim.split(',')]
     hidden_feat_dim = [int(item) for item in args.hidden_feat_dim.split(',')]
     output_feat_dim = input_feat_dim[1:] + [3]
-    
+
     # which encoder block to have graph convs
     which_blk_graph = [int(item) for item in args.which_gcn.split(',')]
-
+    
     if args.run_eval_only==True and args.resume_checkpoint!=None and args.resume_checkpoint!='None' and 'state_dict' not in args.resume_checkpoint:
         # if only run eval, load checkpoint
         logger.info("Evaluation: Loading from checkpoint {}".format(args.resume_checkpoint))
         _model = torch.load(args.resume_checkpoint)
-
     else:
         # init three transformer-encoder blocks in a loop
         for i in range(len(output_feat_dim)):
@@ -243,7 +246,7 @@ def main(args):
             config.img_feature_dim = input_feat_dim[i] 
             config.output_feature_dim = output_feat_dim[i]
             args.hidden_size = hidden_feat_dim[i]
-            args.intermediate_size = int(args.hidden_size*2)
+            args.intermediate_size = int(args.hidden_size*args.interm_size_scale)
 
             if which_blk_graph[i]==1:
                 config.graph_conv = True
@@ -255,6 +258,7 @@ def main(args):
 
             # update model structure if specified in arguments
             update_params = ['num_hidden_layers', 'hidden_size', 'num_attention_heads', 'intermediate_size']
+
             for idx, param in enumerate(update_params):
                 arg_param = getattr(args, param)
                 config_param = getattr(config, param)
@@ -267,8 +271,8 @@ def main(args):
             model = model_class(config=config) 
             logger.info("Init model from scratch.")
             trans_encoder.append(model)
-        
-        # create backbone model
+
+        # init ImageNet pre-trained backbone model
         if args.arch=='hrnet':
             hrnet_yaml = 'models/hrnet/cls_hrnet_w40_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
             hrnet_checkpoint = 'models/hrnet/hrnetv2_w40_imagenet_pretrained.pth'
@@ -285,7 +289,8 @@ def main(args):
             print("=> using pre-trained model '{}'".format(args.arch))
             backbone = models.__dict__[args.arch](pretrained=True)
             # remove the last fc layer
-            backbone = torch.nn.Sequential(*list(backbone.children())[:-1])
+            backbone = torch.nn.Sequential(*list(backbone.children())[:-2])
+
 
         trans_encoder = torch.nn.Sequential(*trans_encoder)
         total_params = sum(p.numel() for p in trans_encoder.parameters())
@@ -293,16 +298,20 @@ def main(args):
         backbone_total_params = sum(p.numel() for p in backbone.parameters())
         logger.info('Backbone total parameters: {}'.format(backbone_total_params))
 
-        # build end-to-end Graphormer network (CNN backbone + multi-layer Graphormer encoder)
-        _model = Graphormer_Network(args, config, backbone, trans_encoder)
+        # build end-to-end Graphormer network (CNN backbone + multi-layer graphormer encoder)
+        _model = Graphormer_Network(args, config, backbone, trans_encoder, mesh_sampler)
 
         if args.resume_checkpoint!=None and args.resume_checkpoint!='None':
             # for fine-tuning or resume training or inference, load weights from checkpoint
             logger.info("Loading state dict from checkpoint {}".format(args.resume_checkpoint))
             # workaround approach to load sparse tensor in graph conv.
-            state_dict = torch.load(args.resume_checkpoint)
-            _model.load_state_dict(state_dict, strict=False)
-            del state_dict
+            states = torch.load(args.resume_checkpoint)
+            # states = checkpoint_loaded.state_dict()
+            for k, v in states.items():
+                states[k] = v.cpu()
+            # del checkpoint_loaded
+            _model.load_state_dict(states, strict=False)
+            del states
             gc.collect()
             torch.cuda.empty_cache()
 
@@ -332,7 +341,7 @@ def main(args):
     else:
         raise ValueError("Cannot find images at {}".format(args.image_file_or_path))
 
-    # run_inference(args, image_list, _model, mano_model, renderer, mesh_sampler)
+    run_inference(args, image_list, _model, smpl, renderer, mesh_sampler)   
 
 if __name__ == "__main__":
     args = parse_args()

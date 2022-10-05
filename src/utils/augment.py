@@ -5,7 +5,7 @@ class PhotometricAug(object):
     Color augment
     """
 
-    def __init__(self, config) -> None:
+    def __init__(self, config, is_train=True) -> None:
         self.augmentor = A.Compose([
             A.ColorJitter(p=config['colorjitter']['p'],
                           brightness=(config['colorjitter']['brightness']['thre'][0],
@@ -14,7 +14,7 @@ class PhotometricAug(object):
             A.RandomGamma(p=config['gamma']['p'], gamma_limit=(15, 65)),
             A.GaussNoise(p=config['gauss']['p'],
                          var_limit=(config['gauss']['var'][0], config['gauss']['var'][1]))
-        ], p=1.0)
+        ], p=1.0 if is_train else 0.0)
 
     def __call__(self, x):
         return self.augmentor(image=x)['image']
