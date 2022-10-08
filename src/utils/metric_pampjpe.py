@@ -8,6 +8,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import numpy as np
+import torch
 
 def compute_similarity_transform(S1, S2):
     """Computes a similarity transform (sR, t) that takes
@@ -55,14 +56,20 @@ def compute_similarity_transform(S1, S2):
 
     if transposed:
         S1_hat = S1_hat.T
-
     return S1_hat
 
 def compute_similarity_transform_batch(S1, S2):
     """Batched version of compute_similarity_transform."""
+    is_tensor = False
+    if type(S1) == torch.Tensor:
+        S1 = S1.cpu().numpy()
+        S2 = S2.cpu().numpy()
+        is_tensor = True
     S1_hat = np.zeros_like(S1)
     for i in range(S1.shape[0]):
         S1_hat[i] = compute_similarity_transform(S1[i], S2[i])
+    if is_tensor:
+        S1_hat = torch.tensor(S1_hat)
     return S1_hat
 
 def reconstruction_error(S1, S2, reduction='mean'):

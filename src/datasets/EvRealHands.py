@@ -609,7 +609,7 @@ class EvRealHands(Dataset):
                 meta_data_rgb = self.get_annotations(seq_id, cam_pair, str(rgb_id))
                 meta_data['3d_joints_rgb'] = meta_data_rgb['3d_joints'].clone()
                 meta_data['mano_rgb'] = meta_data_rgb['mano'].copy()
-                meta_data['joints_2d_valid_ev'] = meta_data_rgb['joints_2d_valid_ev']
+                # meta_data['joints_2d_valid_ev'] = meta_data_rgb['joints_2d_valid_ev']
 
             if str(rgb_id) in self.data[seq_id]['annot']['frames'][cam_pair[1]]:
                 rgb_path = osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id, 'images', cam_pair[1],\

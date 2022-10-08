@@ -59,25 +59,59 @@ class Loss(torch.nn.Module):
         gt_rgb_vertices = gt_rgb_mano_output.vertices - gt_rgb_root[:, None, :]
         gt_rgb_vertices_sub = gt_rgb_vertices_sub - gt_rgb_root[:, None, :]
 
-        pred_3d_joints_from_mesh = self.mano_layer.get_3d_joints(preds['pred_vertices'])
+        if self.config['model']['method']['framework'] == 'encoder_based':
+            pred_3d_joints_from_mesh = self.mano_layer.get_3d_joints(preds['pred_vertices'])
 
-        # todo directly predicted 3d joints loss
-        loss_3d_joints = self.get_3d_joints_loss(gt_dest_3d_joints, preds['pred_3d_joints'])
-        # todo predicted (from mesh) 3d joints loss
-        loss_3d_joints_reg = self.get_3d_joints_loss(gt_dest_3d_joints, pred_3d_joints_from_mesh)
-        # todo vertices loss here
-        loss_vertices = self.get_vertices_loss(gt_dest_vertices, preds['pred_vertices'])
-        loss_vertices_sub = self.get_vertices_loss(gt_dest_vertices_sub, preds['pred_vertices_sub'])
+            # todo directly predicted 3d joints loss
+            loss_3d_joints = self.get_3d_joints_loss(gt_dest_3d_joints, preds['pred_3d_joints'])
+            # todo predicted (from mesh) 3d joints loss
+            loss_3d_joints_reg = self.get_3d_joints_loss(gt_dest_3d_joints, pred_3d_joints_from_mesh)
+            # todo vertices loss here
+            loss_vertices = self.get_vertices_loss(gt_dest_vertices, preds['pred_vertices'])
+            loss_vertices_sub = self.get_vertices_loss(gt_dest_vertices_sub, preds['pred_vertices_sub'])
 
-        # todo sum up the losses
-        loss_sum = self.config['exper']['loss']['vertices'] * loss_vertices +\
-            self.config['exper']['loss']['vertices_sub'] * loss_vertices_sub +\
-            self.config['exper']['loss']['3d_joints'] * loss_3d_joints +\
-            self.config['exper']['loss']['3d_joints_from_mesh'] * loss_3d_joints_reg
-        loss_items = {
-            'loss_vertices': loss_vertices,
-            'loss_vertices_sub': loss_vertices_sub,
-            'loss_3d_joints': loss_3d_joints,
-            'loss_3d_joints_reg': loss_3d_joints_reg,
-        }
+            # todo sum up the losses
+            loss_sum = self.config['exper']['loss']['vertices'] * loss_vertices +\
+                self.config['exper']['loss']['vertices_sub'] * loss_vertices_sub +\
+                self.config['exper']['loss']['3d_joints'] * loss_3d_joints +\
+                self.config['exper']['loss']['3d_joints_from_mesh'] * loss_3d_joints_reg
+            loss_items = {
+                'loss_vertices': loss_vertices,
+                'loss_vertices_sub': loss_vertices_sub,
+                'loss_3d_joints': loss_3d_joints,
+                'loss_3d_joints_reg': loss_3d_joints_reg,
+            }
+        elif self.config['model']['method']['framework'] == 'encoder_decoder_based':
+            pred_3d_joints_from_mesh_l = self.mano_layer.get_3d_joints(preds['pred_vertices_l'])
+            loss_3d_joints_l = self.get_3d_joints_loss(gt_rgb_3d_joints, preds['pred_3d_joints_l'])
+            loss_3d_joints_reg_l = self.get_3d_joints_loss(gt_rgb_3d_joints, pred_3d_joints_from_mesh_l)
+            loss_vertices_l = self.get_vertices_loss(gt_rgb_vertices, preds['pred_vertices_l'])
+            loss_vertices_sub_l = self.get_vertices_loss(gt_rgb_vertices_sub, preds['pred_vertices_sub_l'])
+            loss_sum = self.config['exper']['loss']['vertices'] * loss_vertices_l + \
+                       self.config['exper']['loss']['vertices_sub'] * loss_vertices_sub_l + \
+                       self.config['exper']['loss']['3d_joints'] * loss_3d_joints_l + \
+                       self.config['exper']['loss']['3d_joints_from_mesh'] * loss_3d_joints_reg_l
+            loss_items = {
+                'loss_vertices_l': loss_vertices_l,
+                'loss_vertices_sub_l': loss_vertices_sub_l,
+                'loss_3d_joints_l': loss_3d_joints_l,
+                'loss_3d_joints_reg_l': loss_3d_joints_reg_l,
+            }
+            if self.config['model']['method']['ere_usage'][2]:
+                pred_3d_joints_from_mesh_r = self.mano_layer.get_3d_joints(preds['pred_vertices_r'])
+                loss_3d_joints_r = self.get_3d_joints_loss(gt_dest_3d_joints, preds['pred_3d_joints_r'])
+                loss_3d_joints_reg_r = self.get_3d_joints_loss(gt_dest_3d_joints, pred_3d_joints_from_mesh_r)
+                loss_vertices_r = self.get_vertices_loss(gt_dest_vertices, preds['pred_vertices_r'])
+                loss_vertices_sub_r = self.get_vertices_loss(gt_dest_vertices_sub, preds['pred_vertices_sub_r'])
+                loss_sum += self.config['exper']['loss']['vertices'] * loss_vertices_r + \
+                           self.config['exper']['loss']['vertices_sub'] * loss_vertices_sub_r + \
+                           self.config['exper']['loss']['3d_joints'] * loss_3d_joints_r + \
+                           self.config['exper']['loss']['3d_joints_from_mesh'] * loss_3d_joints_reg_r
+                loss_items.update({
+                    'loss_vertices_r': loss_vertices_r,
+                    'loss_vertices_sub_r': loss_vertices_sub_r,
+                    'loss_3d_joints_r': loss_3d_joints_r,
+                    'loss_3d_joints_reg_r': loss_3d_joints_reg_r,
+                })
+
         return loss_sum, loss_items

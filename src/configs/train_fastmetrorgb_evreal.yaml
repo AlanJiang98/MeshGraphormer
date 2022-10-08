@@ -1,0 +1,112 @@
+data:
+  dataset_yaml: '/userhome/alanjjp/Project/MeshGraphormer/src/datasets/dataset.yaml'
+  dataset: ['evrealhands']
+  event: True
+  smplx_path: '/userhome/alanjjp/data/smplx_models/mano'
+  rgb_hw: [920, 1064]
+  event_hw: [260, 346]
+
+model:
+  bert_config: 'src/modeling/bert/bert-base-uncased/'
+  method:
+    framework: 'encoder_decoder_based' # 'encoder_decoder_based'
+    ere_usage: [False, True, False]
+  tfm:
+    scale: 'L' # 'S', 'M', 'L'
+    model_dim: [512, 128]
+    feedforward_dim: [1024, 256]
+    pos_type: 'sine'
+    nhead: 8
+    decoder_features: [False, True, False]
+    output_attentions: True
+    drop_out: 0.1
+    mesh_type: 'hand'
+    num_hidden_layers: 4
+    num_attention_heads: 4
+    hidden_size: -1
+    intermediate_size: -1
+    input_feat_dim: [ 2051, 512, 128 ]
+    hidden_feat_dim: [ 1024,256,64 ]
+    which_gcn: [ 0, 0, 1 ]
+  backbone:
+    arch: 'hrnet'
+    hrnet_yaml: 'models/hrnet/cls_hrnet_w64_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
+    hrnet_bb: 'models/hrnet/hrnetv2_w64_imagenet_pretrained.pth'
+
+
+exper:
+  debug: False
+  run_eval_only: False
+  resume_checkpoint: None
+  num_workers: 6
+  output_dir: './output'
+  per_gpu_batch_size: 64
+  lr: 0.0001
+  num_train_epochs: 150
+  device: 'cuda'
+  seed: 88
+  distributed: True
+  preprocess:
+    ere_rate: 1.0
+    left_window: [3000, 1000000]
+    ev_repre: 'LNES' #'Lnes', 'eci'
+    event_range: 'num' # 'time'
+    num_window: 5000
+    cam_view: 'rgb' # 'world', 'rgb', 'event
+  augment:
+    geometry:
+      scale: 0.1
+      trans: 0.05
+      rot: 0.2
+    rgb_photometry:
+      colorjitter:
+        p: 0.2
+        brightness:
+          thre: [0.6, 5.]
+      gauss:
+        var: [30, 100]
+        p: 0.8
+      blur:
+        p: 0.2
+      gamma:
+        p: 0.3
+    event_photometry:
+      colorjitter:
+        p: 0.0
+        brightness:
+          thre: [ 0.6, 4. ]
+      gauss:
+        var: [ 30, 100 ]
+        p: 0.8
+      blur:
+        p: 0.2
+      gamma:
+        p: 0.0
+  bbox:
+    rate: 1.5
+    rgb:
+      size: 192
+    event:
+      size: 128
+  loss:
+    vertices: 100.0
+    vertices_sub: 100.0
+    3d_joints: 2000.0
+    3d_joints_from_mesh: 1000.0
+
+eval:
+  multiscale_inference: False
+  rot: 0
+  sc: 1.0
+  fast_fps: 120
+  fast_window: 5000
+  output:
+    save: False
+    mesh: True
+    attention_map: True
+    errors: True
+    rendered: True
+    vis_rendered: 'event'
+
+utils:
+  logging_steps: 10
