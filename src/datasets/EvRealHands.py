@@ -49,8 +49,7 @@ class EvRealHands(Dataset):
         self.mano_layer = MANO(self.config['data']['smplx_path'], use_pca=False, is_rhand=True)
         self.rgb_augment = PhotometricAug(self.config['exper']['augment']['rgb_photometry'], not self.config['exper']['run_eval_only'])
         self.event_augment = PhotometricAug(self.config['exper']['augment']['event_photometry'], not self.config['exper']['run_eval_only'])
-        if config['exper']['run_eval_only']:
-            self.get_bbox_matrices_for_fast_sequences()
+        self.get_bbox_inter_f()
         pass
 
     @staticmethod
@@ -62,11 +61,15 @@ class EvRealHands(Dataset):
         if not is_train:
             if not annot['annoted'] and not (annot['motion_type'] == 'fast'):
                 return {}
-        mano_ids = [int(id) for id in annot['manos'].keys()]
+        if not is_train and annot['motion_type'] == 'fast':
+            mano_ids = [int(id) for id in annot['3d_joints'].keys()]
+        else:
+            mano_ids = [int(id) for id in annot['manos'].keys()]
         mano_ids.sort()
-        mano_ids_np = np.array(mano_ids, dtype=np.int32)
-        indices = np.diff(mano_ids_np) == 1
-        annot['sample_ids'] = [str(id) for id in mano_ids_np[1:][indices]]
+        # mano_ids_np = np.array(mano_ids, dtype=np.int32)
+        # indices = np.diff(mano_ids_np) == 1
+        # annot['sample_ids'] = [str(id) for id in mano_ids_np[1:][indices]]
+        annot['sample_ids'] = [str(id) for id in mano_ids]
         K_old = np.array(annot['camera_info']['event']['K_old'])
         K_new = np.array(annot['camera_info']['event']['K_new'])
         dist = np.array(annot['camera_info']['event']['dist'])
@@ -108,7 +111,7 @@ class EvRealHands(Dataset):
             self.seq_ids += all_sub_2_seq_ids[str(sub_id)]
         if self.config['exper']['debug']:
             if self.config['exper']['run_eval_only']:
-                seq_id = '4'
+                seq_id = '53'
             else:
                 seq_id = '9'
             data = self.get_events_annotations_per_sequence(osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id), not self.config['exper']['run_eval_only'])
@@ -141,14 +144,7 @@ class EvRealHands(Dataset):
         # print(self.data.keys())
         for seq_id in self.data.keys():
             for cam_pair_id, cam_pair in enumerate(self.data_config['camera_pairs']):
-                if self.config['exper']['run_eval_only'] and self.data[seq_id]['annot']['motion_type'] == 'fast':
-                    assert self.config['eval']['fast_fps'] % 15 == 0
-                    num_samples = (len(self.data[seq_id]['annot']['frames'][cam_pair[1]])-1) * self.config['eval']['fast_fps'] / 15
-                    samples_per_seq.append(num_samples)
-                    sample_ids = np.arange(num_samples, dtype=np.int32).tolist()
-                    self.data[seq_id]['annot']['sample_ids'] = [str(id) for id in sample_ids]
-                else:
-                    samples_per_seq.append(len(self.data[seq_id]['annot']['sample_ids']))
+                samples_per_seq.append(len(self.data[seq_id]['annot']['sample_ids']))
                 self.sample_info['seq_ids'].append(seq_id)
                 self.sample_info['cam_pair_ids'].append(cam_pair_id)
         self.sample_info['samples_per_seq'] = np.array(samples_per_seq, dtype=np.int32)
@@ -184,15 +180,18 @@ class EvRealHands(Dataset):
         meta_data = {}
         meta_data['delta_time'] = self.data[seq_id]['annot']['delta_time']
         camera_pair_0 = self.data[seq_id]['annot']['camera_info'][cam_pair[0]]
-        meta_data['R_event_l'] = torch.tensor(camera_pair_0['R'], dtype=torch.float32).view(3, 3)
-        meta_data['K_event_l'] = torch.tensor(camera_pair_0['K'], dtype=torch.float32).view(3, 3)
-        meta_data['t_event_l'] = torch.tensor(camera_pair_0['T'], dtype=torch.float32).view(3) / 1000.
-        meta_data['R_event_r'], meta_data['K_event_r'], meta_data['t_event_r'] = \
-            meta_data['R_event_l'].clone(), meta_data['K_event_l'].clone(), meta_data['t_event_l'].clone()
+        meta_data['R_event'] = torch.tensor(camera_pair_0['R'], dtype=torch.float32).view(3, 3)
+        meta_data['K_event'] = torch.tensor(camera_pair_0['K'], dtype=torch.float32).view(3, 3)
+        meta_data['t_event'] = torch.tensor(camera_pair_0['T'], dtype=torch.float32).view(3) / 1000.
         camera_pair_1 = self.data[seq_id]['annot']['camera_info'][cam_pair[1]]
         meta_data['R_rgb'] = torch.tensor(camera_pair_1['R'], dtype=torch.float32).view(3, 3)
         meta_data['K_rgb'] = torch.tensor(camera_pair_1['K'], dtype=torch.float32).view(3, 3)
         meta_data['t_rgb'] = torch.tensor(camera_pair_1['T'], dtype=torch.float32).view(3) / 1000.
+
+        if annot_id % 1 != 0:
+            annot_id = '-1'
+        else:
+            annot_id = str(int(annot_id))
 
         if self.data[seq_id]['annot']['motion_type'] == 'fast' and self.data[seq_id]['annot']['2d_joints'][cam_pair[0]][annot_id] != []:
             meta_data['2d_joints_event'] = torch.tensor(self.data[seq_id]['annot']['2d_joints'][cam_pair[0]][annot_id], dtype=torch.float32).view(21, 2)[indices_change(2, 1)]
@@ -200,20 +199,23 @@ class EvRealHands(Dataset):
         else:
             meta_data['2d_joints_event'] = torch.zeros((21, 2), dtype=torch.float32)
             joints_2d_valid_ev = False
-        meta_data['joints_2d_valid_ev'] = joints_2d_valid_ev
-
 
         if annot_id not in self.data[seq_id]['annot']['2d_joints'][cam_pair[1]].keys() or \
-                self.data[seq_id]['annot']['2d_joints'][cam_pair[1]][annot_id] == [] or annot_id == '-1':
+                self.data[seq_id]['annot']['2d_joints'][cam_pair[1]][annot_id] == []:
             meta_data['2d_joints_rgb'] = torch.zeros((21, 2), dtype=torch.float32)
+            joints_2d_valid_rgb = False
         else:
             meta_data['2d_joints_rgb'] = torch.tensor(self.data[seq_id]['annot']['2d_joints'][cam_pair[1]][annot_id], dtype=torch.float32).view(21, 2)[indices_change(2, 1)]
+            joints_2d_valid_rgb = True
 
         if annot_id in self.data[seq_id]['annot']['3d_joints'].keys():
             meta_data['3d_joints'] = torch.tensor(self.data[seq_id]['annot']['3d_joints'][annot_id], dtype=torch.float32).view(-1, 3)[
                              indices_change(2, 1)] / 1000.
+            joints_3d_valid = True
         else:
             meta_data['3d_joints'] = torch.zeros((21, 3), dtype=torch.float32)
+            joints_3d_valid = False
+
         if annot_id in self.data[seq_id]['annot']['manos'].keys():
             mano = self.data[seq_id]['annot']['manos'][annot_id]
             meta_data['mano'] = {}
@@ -222,6 +224,7 @@ class EvRealHands(Dataset):
             meta_data['mano']['shape'] = torch.tensor(mano['shape'], dtype=torch.float32).view(-1)
             meta_data['mano']['trans'] = torch.tensor(mano['trans'], dtype=torch.float32).view(3)
             meta_data['mano']['root_joint'] = torch.tensor(mano['root_joint'], dtype=torch.float32).view(3)
+            mano_valid = True
         else:
             meta_data['mano'] = {}
             meta_data['mano']['rot_pose'] = torch.zeros((3, ), dtype=torch.float32)
@@ -229,6 +232,12 @@ class EvRealHands(Dataset):
             meta_data['mano']['shape'] = torch.zeros((10, ), dtype=torch.float32)
             meta_data['mano']['trans'] = torch.zeros((3, ), dtype=torch.float32)
             meta_data['mano']['root_joint'] = torch.zeros((3, ), dtype=torch.float32)
+            mano_valid = False
+
+        meta_data['joints_2d_valid_ev'] = joints_2d_valid_ev
+        meta_data['joints_2d_valid_rgb'] = joints_2d_valid_rgb
+        meta_data['joints_3d_valid'] = joints_3d_valid
+        meta_data['mano_valid'] = mano_valid
         return meta_data
 
     def get_event_repre(self, seq_id, indices):
@@ -254,7 +263,7 @@ class EvRealHands(Dataset):
                 trans_x = min(2*trans_range, max(-2*trans_range, np.random.randn() * trans_range))
                 trans_y = min(2 * trans_range, max(-2 * trans_range, np.random.randn() * trans_range))
                 rot = min(2*rot_range, max(-2*rot_range, np.random.randn() * rot_range))
-                augs[i] += [trans_x, trans_y, rot, scale ]
+                augs[i] += [trans_x, trans_y, rot, scale]
         else:
             for i in range(2):
                 augs[i] += [0, 0, self.config['eval']['augment']['rot'], self.config['eval']['augment']['scale']]
@@ -266,11 +275,60 @@ class EvRealHands(Dataset):
         tf[:3, 3] = t
         return tf
 
-    def augment_one_view(self, augs, frame, meta_data, view='rgb'):
-        if view == 'rgb' or 'event_l':
-            mano_key = 'mano_rgb'
-        else:
-            mano_key = 'mano'
+    # def augment_one_view(self, augs, frame, meta_data, view='rgb'):
+    #     mano_key = 'mano'
+    #     K = meta_data['K_'+view]
+    #     R_wm = roma.rotvec_to_rotmat(meta_data[mano_key]['rot_pose'])
+    #     t_wm = meta_data[mano_key]['trans']
+    #
+    #     tf_wm = self.get_transform(R_wm, t_wm + meta_data[mano_key]['root_joint'])
+    #     tf_cw = self.get_transform(meta_data['R_'+view], meta_data['t_'+view])
+    #
+    #     tf_cm = tf_cw @ tf_wm
+    #
+    #     # trans augmentation
+    #     aff_trans_2d = torch.eye(3)
+    #     H, W, _ = frame.shape
+    #     trans_x_2d = augs[0] * W
+    #     trans_y_2d = augs[1] * H
+    #     aff_trans_2d[0, 2] = trans_x_2d
+    #     aff_trans_2d[1, 2] = trans_y_2d
+    #     tf_trans_3d = torch.eye(4)
+    #     trans_x_3d = trans_x_2d * tf_cm[2, 3] / meta_data['K_'+view][0, 0]
+    #     trans_y_3d = trans_y_2d * tf_cm[2, 3] / meta_data['K_' + view][1, 1]
+    #     tf_trans_3d[0, 3] = trans_x_3d
+    #     tf_trans_3d[1, 3] = trans_y_3d
+    #
+    #     # rotation
+    #     rot_2d = roma.rotvec_to_rotmat(augs[2] * torch.tensor([0.0, 0.0, 1.0]))
+    #     tf_rot_3d = self.get_transform(rot_2d, torch.zeros(3))
+    #     aff_rot_2d = torch.eye(3)
+    #     aff_rot_2d[:2, :2] = rot_2d[:2, :2]
+    #     aff_rot_2d[0, 2] = (1 - rot_2d[0, 0]) * K[0, 2] - rot_2d[0, 1] * K[1, 2]
+    #     aff_rot_2d[1, 2] = (1 - rot_2d[1, 1]) * K[1, 2] - rot_2d[1, 0] * K[0, 2]
+    #
+    #     tf_3d_tmp = tf_rot_3d @ tf_trans_3d @ tf_cm
+    #     # scale
+    #     tf_scale_3d = torch.eye(4)
+    #     # tf_scale_3d[2, 2] = 1.0 / augs[3]
+    #     tf_scale_3d[2, 3] = (1.0 / augs[3] - 1.) * tf_3d_tmp[2, 3]
+    #     aff_scale_2d = torch.eye(3)
+    #     aff_scale_2d[0, 0], aff_scale_2d[1, 1] = augs[3], augs[3]
+    #     aff_scale_2d[:2, 2] = (1-augs[3]) * K[:2, 2]
+    #
+    #     aff_2d_final = (aff_scale_2d @ aff_rot_2d @ aff_trans_2d)[:2, :]
+    #     frame_aug = cv2.warpAffine(np.array(frame), aff_2d_final.numpy(), (W, H), flags=cv2.INTER_LINEAR)
+    #
+    #     tf_3d_final = tf_scale_3d @ tf_rot_3d @ tf_trans_3d @ tf_cm
+    #     tf_cw = tf_3d_final @ tf_wm.inverse()
+    #
+    #     meta_data['R_'+view] = tf_cw[:3, :3]
+    #     meta_data['t_'+view] = tf_cw[:3, 3]
+    #
+    #     return frame_aug
+
+    def get_trans_from_augment(self, augs, meta_data, H, W, view='rgb'):
+        mano_key = 'mano'
         K = meta_data['K_'+view]
         R_wm = roma.rotvec_to_rotmat(meta_data[mano_key]['rot_pose'])
         t_wm = meta_data[mano_key]['trans']
@@ -282,7 +340,6 @@ class EvRealHands(Dataset):
 
         # trans augmentation
         aff_trans_2d = torch.eye(3)
-        H, W, _ = frame.shape
         trans_x_2d = augs[0] * W
         trans_y_2d = augs[1] * H
         aff_trans_2d[0, 2] = trans_x_2d
@@ -311,15 +368,15 @@ class EvRealHands(Dataset):
         aff_scale_2d[:2, 2] = (1-augs[3]) * K[:2, 2]
 
         aff_2d_final = (aff_scale_2d @ aff_rot_2d @ aff_trans_2d)[:2, :]
-        frame_aug = cv2.warpAffine(np.array(frame), aff_2d_final.numpy(), (W, H), flags=cv2.INTER_LINEAR)
+        # frame_aug = cv2.warpAffine(np.array(frame), aff_2d_final.numpy(), (W, H), flags=cv2.INTER_LINEAR)
 
         tf_3d_final = tf_scale_3d @ tf_rot_3d @ tf_trans_3d @ tf_cm
         tf_cw = tf_3d_final @ tf_wm.inverse()
 
-        meta_data['R_'+view] = tf_cw[:3, :3]
-        meta_data['t_'+view] = tf_cw[:3, 3]
+        # meta_data['R_'+view] = tf_cw[:3, :3]
+        # meta_data['t_'+view] = tf_cw[:3, 3]
 
-        return frame_aug
+        return aff_2d_final.numpy(), tf_cw
 
     def get_bbox_from_joints(self, K, R, t, joints, rate=1.5):
         kps = (K @ (R @ joints.transpose(0, 1) + t.reshape(3, 1))).transpose(0, 1)
@@ -332,30 +389,6 @@ class EvRealHands(Dataset):
         center_y = (y_min + y_max) / 2
         bbox_size = torch.max(torch.tensor([x_max-x_min, y_max-y_min])) * rate
         return torch.tensor([center_x, center_y, bbox_size]).int()
-
-    def get_bbox_list(self, meta_data, rate=1.5):
-        bbox_rgb = self.get_bbox_from_joints(
-            meta_data['K_rgb'],
-            meta_data['R_rgb'],
-            meta_data['t_rgb'],
-            meta_data['3d_joints_rgb'],
-            rate,
-        )
-        bbox_l = self.get_bbox_from_joints(
-            meta_data['K_event_l'],
-            meta_data['R_event_l'],
-            meta_data['t_event_l'],
-            meta_data['3d_joints_rgb'],
-            rate,
-        )
-        bbox_r = self.get_bbox_from_joints(
-            meta_data['K_event_r'],
-            meta_data['R_event_r'],
-            meta_data['t_event_r'],
-            meta_data['3d_joints'],
-            rate,
-        )
-        return bbox_l, bbox_rgb, bbox_r
 
     def crop(self, bbox, frame, size, hw=[260, 346]):
         lf_top = (bbox[:2] - bbox[2] / 2).int()
@@ -405,7 +438,8 @@ class EvRealHands(Dataset):
             timestamps
         )
         index_l, index_r = self.get_l_event_indices(timestamps[1], event[indices[0]:indices[1]].copy())
-        return index_l+indices[0], index_r+indices[1]
+        # todo crazy bug here!
+        return index_l+indices[0], index_r+indices[0]
 
     def get_event_bbox_matrix_for_fast_sequences(self):
         for seq_id in self.data.keys():
@@ -453,8 +487,7 @@ class EvRealHands(Dataset):
                 bbox_inter_f = interp1d(bbox_seq[:, 0], bbox_seq[:, 1:4], axis=0, kind='quadratic')
                 self.bbox_inter[seq_id] = {'event': bbox_inter_f}
 
-    def get_rgb_bbox_matrix_for_fast_sequences(self, rgb_camera_views):
-        rgb_view = rgb_camera_views
+    def get_rgb_bbox_matrix_for_fast_sequences(self, rgb_view):
         for seq_id in self.data.keys():
             if self.data[seq_id]['annot']['motion_type'] == 'fast':
                 bbox_ids = []
@@ -483,16 +516,50 @@ class EvRealHands(Dataset):
                 bbox_inter_f = interp1d(bbox_seq[:, 0], bbox_seq[:, 1:4], axis=0, kind='quadratic')
                 self.bbox_inter[seq_id][rgb_view] = bbox_inter_f
 
-    def get_bbox_matrices_for_fast_sequences(self):
+    def get_rgb_joint_matrix(self):
+        for seq_id in self.data.keys():
+            if self.data[seq_id]['annot']['motion_type'] != 'fast':
+                joints_ids = [int(id) for id in self.data[seq_id]['annot']['3d_joints'].keys()]
+                joints_ids.sort()
+                # a tuple (timestamps, 3d joints)
+                joints_3ds = np.zeros((len(joints_ids), 21, 3), dtype=np.float32)
+                ids_ = np.array(joints_ids, dtype=np.float32)
+                ids_timestamp = ids_ * 1000000. / 15 + self.data[seq_id]['annot']['delta_time']
+                for i, id in enumerate(joints_ids):
+                    joints_3ds[i] = np.array(self.data[seq_id]['annot']['3d_joints'][str(id)], dtype=np.float32).reshape(-1, 3)[indices_change(2, 1)] / 1000.
+
+                # this is 3d joints bbox interpolation function
+                bbox_inter_f = interp1d(ids_timestamp, joints_3ds, axis=0, kind='cubic')
+                self.bbox_inter[seq_id] = {'joints': bbox_inter_f}
+
+    def get_bbox_inter_f(self):
         self.bbox_inter = {}
         self.get_event_bbox_matrix_for_fast_sequences()
         for cam_view in self.data_config['camera_pairs']:
             self.get_rgb_bbox_matrix_for_fast_sequences(cam_view[1])
+        self.get_rgb_joint_matrix()
 
-    def get_bbox_by_interpolation_for_fast_sequences(self, seq_id, camera_view, timestamp):
+    def get_valid_time(self, x, time):
+        if x[0] >= time:
+            time_ = x[0]
+        elif x[-1] <= time:
+            time_ = x[-1]
+        else:
+            time_ = time
+        return time_
+
+    def get_bbox_by_interpolation(self, seq_id, camera_view, timestamp, K=None, R=None, t=None):
         # get bbox at t0 for fast sequences
-        bbox = self.bbox_inter[seq_id][camera_view](timestamp)
-        return torch.tensor(bbox, dtype=torch.int32)
+        if self.data[seq_id]['annot']['motion_type'] == 'fast':
+            timestamp = self.get_valid_time(self.bbox_inter[seq_id][camera_view].x, timestamp)
+            bbox = self.bbox_inter[seq_id][camera_view](timestamp)
+            bbox = torch.tensor(bbox, dtype=torch.int32)
+        else:
+            timestamp = self.get_valid_time(self.bbox_inter[seq_id]['joints'].x, timestamp)
+            joints = self.bbox_inter[seq_id]['joints'](timestamp)
+            joints = torch.tensor(joints, dtype=torch.float32)
+            bbox = self.get_bbox_from_joints(K, R, t, joints, rate=1.5)
+        return bbox
 
     def get_seq_type(self, seq_id):
         if self.data[seq_id]['annot']['motion_type'] == 'fast':
@@ -518,7 +585,7 @@ class EvRealHands(Dataset):
             return self.get_transform(torch.eye(3, dtype=torch.float32), torch.zeros(3, dtype=torch.float32))
         elif self.config['exper']['preprocess']['cam_view'] == 'rgb':
             tf_rgb_w = self.get_transform(meta_data['R_rgb'], meta_data['t_rgb'])
-            for mano_key in ['mano', 'mano_rgb']:
+            for mano_key in ['mano', ]:
                 if mano_key in meta_data.keys():
                     R_wm = roma.rotvec_to_rotmat(meta_data[mano_key]['rot_pose'])
                     t_wm = meta_data[mano_key]['trans']
@@ -526,12 +593,12 @@ class EvRealHands(Dataset):
                     tf_rgb_m = tf_rgb_w @ tf_wm
                     meta_data[mano_key]['rot_pose'] = roma.rotmat_to_rotvec(tf_rgb_m[:3, :3])
                     meta_data[mano_key]['trans'] = tf_rgb_m[:3, 3] - meta_data[mano_key]['root_joint']
-            for joints_key in ['3d_joints', '3d_joints_rgb']:
+            for joints_key in ['3d_joints', ]:
                 if joints_key in meta_data.keys():
                     joints_new = (tf_rgb_w[:3, :3] @ (meta_data[joints_key].transpose(0, 1))\
                                   + tf_rgb_w[:3, 3:4]).transpose(0, 1)
                     meta_data[joints_key] = joints_new
-            for event_cam in ['event_l', 'event_r']:
+            for event_cam in ['event', ]:
                 tf_e_w = self.get_transform(meta_data['R_'+event_cam], meta_data['t_'+event_cam])
                 tf_e_rgb = tf_e_w @ tf_rgb_w.inverse()
                 meta_data['R_' + event_cam] = tf_e_rgb[:3, :3]
@@ -540,8 +607,8 @@ class EvRealHands(Dataset):
             meta_data['t_rgb'] = torch.zeros(3, dtype=torch.float32)
             return tf_rgb_w.inverse()
         elif self.config['exper']['preprocess']['cam_view'] == 'event':
-            tf_event_w = self.get_transform(meta_data['R_event_l'], meta_data['t_event_l'])
-            for mano_key in ['mano', 'mano_rgb']:
+            tf_event_w = self.get_transform(meta_data['R_event'], meta_data['t_event'])
+            for mano_key in ['mano', ]:
                 if mano_key in meta_data.keys():
                     R_wm = roma.rotvec_to_rotmat(meta_data[mano_key]['rot_pose'])
                     t_wm = meta_data[mano_key]['trans']
@@ -549,7 +616,7 @@ class EvRealHands(Dataset):
                     tf_event_m = tf_event_w @ tf_wm
                     meta_data[mano_key]['rot_pose'] = roma.rotmat_to_rotvec(tf_event_m[:3, :3])
                     meta_data[mano_key]['trans'] = tf_event_m[:3, 3] - meta_data[mano_key]['root_joint']
-            for joints_key in ['3d_joints', '3d_joints_rgb']:
+            for joints_key in ['3d_joints', ]:
                 if joints_key in meta_data.keys():
                     joints_new = (tf_event_w[:3, :3] @ (meta_data[joints_key].transpose(0, 1))\
                                   + tf_event_w[:3, 3:4]).transpose(0, 1)
@@ -559,116 +626,156 @@ class EvRealHands(Dataset):
                 tf_rgb_e = tf_rgb_w @ tf_event_w.inverse()
                 meta_data['R_' + rgb_cam] = tf_rgb_e[:3, :3]
                 meta_data['t_' + rgb_cam] = tf_rgb_e[:3, 3]
-            meta_data['R_event_l'] = torch.eye(3, dtype=torch.float32)
-            meta_data['t_event_l'] = torch.zeros(3, dtype=torch.float32)
-            meta_data['R_event_r'] = torch.eye(3, dtype=torch.float32)
-            meta_data['t_event_r'] = torch.zeros(3, dtype=torch.float32)
+            meta_data['R_event'] = torch.eye(3, dtype=torch.float32)
+            meta_data['t_event'] = torch.zeros(3, dtype=torch.float32)
             return tf_event_w.inverse()
         else:
             raise NotImplementedError('no implemention for change camera view!')
 
     def __getitem__(self, idx):
+        output = []
         seq_id, cam_pair, annot_id = self.get_info_from_sample_id(idx)
         test_fast = self.config['exper']['run_eval_only'] and \
                     self.data[seq_id]['annot']['motion_type'] == 'fast'
-        duration = 1
-
-        if self.config['exper']['run_eval_only'] and test_fast:
-            is_ere = True # todo change here!
-        else:
-            # for training
-            is_ere = torch.rand(1) < self.config['exper']['preprocess']['ere_rate']
-
-        if test_fast:
-            meta_data = self.get_annotations(seq_id, cam_pair, str(int(int(annot_id) / (self.config['eval']['fast_fps'] / 15.))))
-        else:
-            meta_data = self.get_annotations(seq_id, cam_pair, annot_id)
-
-        delta_time = meta_data['delta_time']
-
-        if not is_ere:
-            rgb_path = osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id, 'images', \
-                                cam_pair[1], 'image'+annot_id.rjust(4, '0')+'.jpg')
-            rgb_t = delta_time + int(annot_id) * 1e6 / 15.
-            indices_l_ev = self.get_l_event_indices(rgb_t, self.data[seq_id]['event'])
-            indices_r_ev = self.get_indices_from_timestamps([rgb_t, rgb_t], seq_id)
-            meta_data['3d_joints_rgb'] = meta_data['3d_joints'].clone()
-            meta_data['mano_rgb'] = meta_data['mano'].copy()
-        else:
-            ## TODO add previous mesh as supervision or not???
-            # TODO whether set the window distance between rgb frame and annotations
-            if test_fast:
-                periods = int(annot_id) / (self.config['eval']['fast_fps'] / 15.)
-                rgb_id = int(periods)
-                interval = (periods - rgb_id) * 1e6 / 15.
-            else:
-                rgb_id = int(annot_id) - duration
-                interval = duration * 1e6 / 15.
-
-            if str(rgb_id) in self.data[seq_id]['annot']['mano'].keys() or test_fast:
-                meta_data_rgb = self.get_annotations(seq_id, cam_pair, str(rgb_id))
-                meta_data['3d_joints_rgb'] = meta_data_rgb['3d_joints'].clone()
-                meta_data['mano_rgb'] = meta_data_rgb['mano'].copy()
-                # meta_data['joints_2d_valid_ev'] = meta_data_rgb['joints_2d_valid_ev']
-
-            if str(rgb_id) in self.data[seq_id]['annot']['frames'][cam_pair[1]]:
-                rgb_path = osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id, 'images', cam_pair[1],\
-                                    'image' + str(rgb_id).rjust(4, '0') + '.jpg')
-                rgb_t = delta_time + rgb_id * 1e6 / 15.
-                ## get left time window
-                indices_l_ev = self.get_l_event_indices(rgb_t, self.data[seq_id]['event'])
-                indices_r_ev = self.get_indices_from_timestamps([rgb_t, rgb_t+interval], seq_id)
-
-        rgb = self.load_img(rgb_path)
-        l_ev_frame = self.get_event_repre(seq_id, indices_l_ev)
-        l_ev_frame = torch.cat([l_ev_frame.permute(1, 2, 0), torch.zeros((260, 346, 1))], dim=2)
-        r_ev_frame = self.get_event_repre(seq_id, indices_r_ev)
-        r_ev_frame = torch.cat([r_ev_frame.permute(1,2,0), torch.zeros((260, 346, 1))], dim=2)
-
         aug_params = self.get_augment_param()
-        # self.render_hand(
-        #     meta_data['mano_rgb'],
-        #     meta_data['K_rgb'],
-        #     meta_data['R_rgb'],
-        #     meta_data['t_rgb'],
-        #     hw=[920, 1064],
-        #     img_bg=rgb / 255.,
-        # )
-        # self.render_hand(
-        #     meta_data['mano_rgb'],
-        #     meta_data['K_event_l'],
-        #     meta_data['R_event_l'],
-        #     meta_data['t_event_l'],
-        #     hw=[260, 346],
-        #     img_bg=l_ev_frame,
-        # )
-        # self.render_hand(
-        #     meta_data['mano'],
-        #     meta_data['K_event_r'],
-        #     meta_data['R_event_r'],
-        #     meta_data['t_event_r'],
-        #     hw=[260, 346],
-        #     img_bg=r_ev_frame,
-        # )
-        # print(aug_params[1])
-
-        # geometry augmentation
-
-
-        rgb_aug_ori = self.augment_one_view(aug_params[1], rgb, meta_data, view='rgb')
-        l_ev_frame_aug_ori = self.augment_one_view(aug_params[0], l_ev_frame, meta_data, view='event_l')
-        r_ev_frame_aug_ori = self.augment_one_view(aug_params[0], r_ev_frame, meta_data, view='event_r')
-        # photometric augmentation
-        rgb_aug = self.rgb_augment(rgb_aug_ori.copy().astype(np.uint8)).astype(np.float32) / 255.
-        l_ev_frame_aug = self.event_augment((l_ev_frame_aug_ori.copy() * 255).astype(np.uint8)).astype(np.float32) / 255.
-        r_ev_frame_aug = self.event_augment((r_ev_frame_aug_ori.copy() * 255).astype(np.uint8)).astype(np.float32) / 255.
 
         if test_fast:
-            bbox_l = self.get_bbox_by_interpolation_for_fast_sequences(seq_id, cam_pair[0], rgb_t)
-            bbox_rgb = self.get_bbox_by_interpolation_for_fast_sequences(seq_id, cam_pair[1], rgb_t)
-            bbox_r = self.get_bbox_by_interpolation_for_fast_sequences(seq_id, cam_pair[0], rgb_t+interval)
+            steps = 2
         else:
-            bbox_l, bbox_rgb, bbox_r = self.get_bbox_list(meta_data, self.config['exper']['bbox']['rate'])
+            steps = self.config['exper']['preprocess']['steps']
+
+        for step in range(steps):
+            meta_data = self.get_annotations(seq_id, cam_pair, int(annot_id))
+            delta_time = meta_data['delta_time']
+
+            if step == 0:
+                segments = 1
+            elif test_fast:
+                segments = int(self.config['eval']['fast_fps'] / 15)
+            else:
+                segments = self.config['exper']['preprocess']['segments']
+            if str(annot_id) in self.data[seq_id]['annot']['frames'][cam_pair[1]]:
+                rgb_path = osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id, 'images', cam_pair[1],\
+                                    'image' + str(annot_id).rjust(4, '0') + '.jpg')
+                rgb = self.load_img(rgb_path)
+                rgb_valid = True
+            else:
+                rgb = np.zeros((920, 1064, 3), dtype=np.float32)
+                rgb_valid = False
+            meta_data['rgb_valid'] = rgb_valid
+
+            T_ = 1e6 / 15.
+
+            t_target = delta_time + int(annot_id) * T_
+
+            ev_frames = []
+
+            for segment in range(segments):
+                t_l = t_target - T_ + segment / segments * T_
+                t_r = t_target - T_ + (segment+1) / segments * T_
+                indices_ev = self.get_indices_from_timestamps([t_l, t_r], seq_id)
+                print('segment', segment, indices_ev)
+                ev_frame = self.get_event_repre(seq_id, indices_ev)
+                ev_frame = torch.cat([ev_frame.permute(1, 2, 0), torch.zeros((260, 346, 1))], dim=2)
+                ev_frames.append(ev_frame)
+
+            if step == 0:
+                aff_2d_rgb, tf_cw_rgb = self.get_trans_from_augment(aug_params[1], meta_data, 920, 1064, view='rgb')
+                aff_2d_ev, tf_cw_ev = self.get_trans_from_augment(aug_params[0], meta_data, 920, 1064,
+                                                                          view='event')
+            meta_data['R_rgb'] = tf_cw_rgb[:3, :3]
+            meta_data['t_rgb'] = tf_cw_rgb[:3, 3]
+            meta_data['R_event'] = tf_cw_ev[:3, :3]
+            meta_data['t_event'] = tf_cw_ev[:3, 3]
+
+            rgb = cv2.warpAffine(np.array(rgb), aff_2d_rgb, (1064, 920), flags=cv2.INTER_LINEAR)
+            rgb = self.rgb_augment(rgb.astype(np.uint8)).astype(np.float32) / 255.
+
+            for i in range(len(ev_frames)):
+                ev_frames[i] = cv2.warpAffine(np.array(ev_frames[i]), aff_2d_ev, (346, 260), flags=cv2.INTER_LINEAR)
+                ev_frames[i] = self.event_augment((ev_frames[i] * 255).astype(np.uint8)).astype(
+                    np.float32) / 255.
+
+            rgb = self.render_hand(
+                meta_data['mano'],
+                meta_data['K_rgb'],
+                meta_data['R_rgb'],
+                meta_data['t_rgb'],
+                hw=[920, 1064],
+                img_bg=rgb,
+            )[0]
+            ev_frames[-1] = self.render_hand(
+                meta_data['mano'],
+                meta_data['K_event'],
+                meta_data['R_event'],
+                meta_data['t_event'],
+                hw=[260, 346],
+                img_bg=ev_frames[-1],
+            )[0]
+
+            if test_fast:
+                bbox_rgb = self.get_bbox_by_interpolation(seq_id, cam_pair[1], t_target)
+                bbox_evs = []
+                for segment in range(segments):
+                    t_r = t_target - T_ + (segment + 1) / segments * T_
+                    bbox_ev = self.get_bbox_by_interpolation(seq_id, cam_pair[0], t_r)
+                    bbox_evs.append(bbox_ev)
+            else:
+                bbox_rgb = self.get_bbox_by_interpolation(seq_id, cam_pair[1], t_target, meta_data['K_rgb'], meta_data['R_rgb'], meta_data['t_rgb'])
+                bbox_evs = []
+                for segment in range(segments):
+                    t_r = t_target - T_ + (segment + 1) / segments * T_
+                    bbox_ev = self.get_bbox_by_interpolation(seq_id, cam_pair[0], t_r, meta_data['K_event'], meta_data['R_event'], meta_data['t_event'])
+                    bbox_evs.append(bbox_ev)
+
+            lt_rgb, sc_rgb, rgb_crop = self.crop(bbox_rgb, rgb, self.config['exper']['bbox']['rgb']['size'], hw=[920, 1064])
+            rgb_crop = torch.tensor(rgb_crop, dtype=torch.float32)
+            ev_frames_crop = []
+            lt_evs, sc_evs = [], []
+            for i, ev_frame in enumerate(ev_frames):
+                lt_ev, sc_ev, ev_frame_crop = self.crop(bbox_evs[i], ev_frame, self.config['exper']['bbox']['event']['size'],
+                                                 hw=[260, 346])
+                lt_evs.append(lt_ev)
+                sc_evs.append(sc_ev)
+                ev_frames_crop.append(torch.tensor(ev_frame_crop, dtype=torch.float32))
+
+            tf_w_c = self.change_camera_view(meta_data)
+
+            self.plotshow(rgb_crop)
+            self.plotshow(ev_frames_crop[-1])
+
+            meta_data.update({
+                'lt_rgb': lt_rgb,
+                'sc_rgb': sc_rgb,
+                'lt_evs': lt_evs,
+                'sc_evs': sc_evs,
+            })
+            # self.plotshow(rgb_crop)
+            # self.plotshow(l_ev_crop)
+            # self.plotshow(r_ev_crop)
+
+            frames = {
+                'rgb': rgb_crop,
+                'ev_frames': ev_frames_crop,
+            }
+            if self.config['exper']['run_eval_only']:
+                frames.update(
+                    {
+                        'rgb_ori': rgb,
+                        'ev_frames_ori': [torch.tensor(frame, dtype=torch.float32) for frame in ev_frames],
+                    }
+                )
+                meta_data.update({
+                    'seq_id': torch.tensor(int(seq_id)),
+                    'seq_type': torch.tensor(self.get_seq_type(seq_id)),
+                    'annot_id': torch.tensor(int(annot_id)),
+                })
+            meta_data.update({
+                'tf_w_c': tf_w_c,
+            })
+            output.append({'frames': frames, 'meta_data': meta_data})
+            annot_id = str(int(annot_id) + 1)
+        return output
 
 
         # self.render_hand(
@@ -687,62 +794,6 @@ class EvRealHands(Dataset):
         #     hw=[260, 346],
         #     img_bg=l_ev_frame_aug,
         # )
-        # self.render_hand(
-        #     meta_data['mano'],
-        #     meta_data['K_event_r'],
-        #     meta_data['R_event_r'],
-        #     meta_data['t_event_r'],
-        #     hw=[260, 346],
-        #     img_bg=r_ev_frame_aug,
-        # )
-        lt_rgb, sc_rgb, rgb_crop = self.crop(bbox_rgb, rgb_aug, self.config['exper']['bbox']['rgb']['size'], hw=[920, 1064])
-        lt_l_ev, sc_l_ev, l_ev_crop = self.crop(bbox_l, l_ev_frame_aug, self.config['exper']['bbox']['event']['size'],
-                                             hw=[260, 346])
-        lt_r_ev, sc_r_ev, r_ev_crop = self.crop(bbox_r, r_ev_frame_aug, self.config['exper']['bbox']['event']['size'],
-                                             hw=[260, 346])
-
-        tf_w_c = self.change_camera_view(meta_data)
-
-        meta_data.update({
-            'lt_rgb': lt_rgb,
-            'sc_rgb': sc_rgb,
-            'lt_l_ev': lt_l_ev,
-            'sc_l_ev': sc_l_ev,
-            'lt_r_ev': lt_r_ev,
-            'sc_r_ev': sc_r_ev,
-        })
-        # self.plotshow(rgb_crop)
-        # self.plotshow(l_ev_crop)
-        # self.plotshow(r_ev_crop)
-
-        rgb = torch.tensor(rgb_crop, dtype=torch.float32)
-        l_ev_frame = torch.tensor(l_ev_crop, dtype=torch.float32)
-        r_ev_frame = torch.tensor(r_ev_crop, dtype=torch.float32)
-        frames = {
-            'rgb': rgb,
-            'l_ev_frame': l_ev_frame,
-            'r_ev_frame': r_ev_frame,
-            # 'rgb_ori': torch.tensor(rgb_aug_ori, dtype=torch.float32),
-            # 'event_l_ori': torch.tensor(l_ev_frame_aug_ori, dtype=torch.float32),
-            # 'event_r_ori': torch.tensor(r_ev_frame_aug_ori, dtype=torch.float32),
-        }
-        if self.config['exper']['run_eval_only']:
-            frames.update(
-                {
-                    'rgb_ori': torch.tensor(rgb_aug_ori, dtype=torch.float32),
-                    'event_l_ori': torch.tensor(l_ev_frame_aug_ori, dtype=torch.float32),
-                    'event_r_ori': torch.tensor(r_ev_frame_aug_ori, dtype=torch.float32),
-                }
-            )
-            meta_data.update({
-                'seq_id': torch.tensor(int(seq_id)),
-                'seq_type': torch.tensor(self.get_seq_type(seq_id)),
-                'annot_id': torch.tensor(int(annot_id)),
-            })
-        meta_data.update({
-            'tf_w_c': tf_w_c,
-        })
-        return frames, meta_data
 
     def __len__(self):
         return int(self.sample_info['samples_sum'][-1])

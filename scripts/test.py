@@ -210,7 +210,7 @@ from src.datasets.Interhand import Interhand
 
 def get_config():
     parser = argparse.ArgumentParser('Training')
-    parser.add_argument('--config', type=str, default='src/configs/train_evmeshgraphormer_evrealhands.yaml')
+    parser.add_argument('--config', type=str, default='src/configs/train_fastmetro_perceiver_evreal.yaml')
     parser.add_argument('--config_merge', type=str, default='')
     parser.add_argument('--output_dir', type=str,
                         default='./output')
@@ -222,21 +222,25 @@ def get_config():
     config = config.config
     if args.output_dir != '':
         config['exper']['output_dir'] = args.output_dir
+    dataset_config = ConfigParser(config['data']['dataset_yaml']).config
+    config['data']['dataset_info'] = dataset_config
     config['exper']['debug'] = True
+    config['exper']['run_eval_only'] = True
     return config
 
 config = get_config()
 
 a = EvRealHands(config)
 
-c = a[10]
 d = a[100]
-e = a[200]
+c = a[80]
+e = a[150]
+b = a[40]
 
-for key in a.data.keys():
-    b = a.data[key]['event']
-
-b_tmp = b[20000:30000]
+# for key in a.data.keys():
+#     b = a.data[key]['event']
+#
+# b_tmp = b[20000:30000]
 
 
 
