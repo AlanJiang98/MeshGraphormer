@@ -126,14 +126,10 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
         data_time.update(time.time() - end)
 
         device = 'cuda'
-        batch_size = frames['rgb'].shape[0]
-        rgb, l_ev_frame, r_ev_frame = to_device(frames['rgb'], device), \
-                                      to_device(frames['l_ev_frame'], device), \
-                                      to_device(frames['r_ev_frame'], device)
+        batch_size = frames[0]['rgb'].shape[0]
+        frames = to_device(frames, device)
         meta_data = to_device(meta_data, device)
-
-        preds = EvRGBStereo_model(rgb.permute(0, 3, 1, 2), l_ev_frame.permute(0, 3, 1, 2), r_ev_frame.permute(0, 3, 1, 2), meta_data)
-
+        preds, atts = EvRGBStereo_model(frames, return_att=True, decode_all=False)
         loss_sum, loss_items = Loss(meta_data, preds)
 
         log_losses.update(loss_sum.item(), batch_size)
@@ -189,21 +185,35 @@ def print_metrics(errors, metric='MPJPE', f=None):
     errors_all = 0
     joints_all = 0
     # remove the fast motion results
+    count = 0
+    scene_errors = 0
+    scene_items = 0
+
     for key, value in errors.items():
+        count += 1
         if value is None:
             if f is None:
                 print('{} is {}'.format(key, None))
             else:
                 f.write('{} is {}'.format(key, None) + '\n')
         else:
-            valid_joint = value != 0.
-            mpjpe_tmp = torch.sum(value) / (torch.sum(valid_joint)+1e-6)
+            valid_items = value != 0.
+            mpjpe_tmp = torch.sum(value) / (torch.sum(valid_items)+1e-6)
             errors_all += torch.sum(value)
-            joints_all += torch.sum(valid_joint)
+            joints_all += torch.sum(valid_items)
+            scene_errors += torch.sum(value)
+            scene_items += torch.sum(valid_items)
             if f is None:
                 print('{} {} is {}'.format(metric, key, mpjpe_tmp))
             else:
                 f.write('{} {} is {}'.format(metric, key, mpjpe_tmp) + '\n')
+            if count % 2 == 0:
+                if f is None:
+                    print('Scene Average is {}'.format(scene_errors / (scene_items + 1e-6)))
+                else:
+                    f.write('Scene Average is {}'.format(scene_errors / (scene_items + 1e-6)) + '\n')
+                scene_errors = 0
+                scene_items = 0
     mpjpe_all = errors_all / (joints_all+1e-6)
     if f is None:
         print('{} all is {}'.format(metric, mpjpe_all))
@@ -220,7 +230,7 @@ def print_items(mpjpe_errors_list, labels_list, metric, file):
             )
     print_metrics(mpjpe_errors, metric=metric, f=file)
 
-def run_eval_and_show(config, val_dataloader, EvRGBStereo_model, _loss):
+def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBStereo_model, _loss):
     mano_layer = MANO(config['data']['smplx_path'], use_pca=False, is_rhand=True).cuda()
     render = Render(config)
 
@@ -245,14 +255,21 @@ def run_eval_and_show(config, val_dataloader, EvRGBStereo_model, _loss):
 
     labels_list = ['n_f', 'n_r', 'h_f', 'h_r', 'f_f', 'f_r', 'fast']
     colors_list = ['r', 'g', 'b', 'gold', 'purple', 'cyan', 'm']
-    l_mpjpe_errors_list = [[], [], [], [], [], [], []]
-    l_vertices_errors_list = [[], [], [], [], [], [], []]
-    l_pa_mpjpe_errors_list = [[], [], [], [], [], [], []]
-    l_pa_vertices_errors_list = [[], [], [], [], [], [], []]
-    r_mpjpe_errors_list = [[], [], [], [], [], [], []]
-    r_vertices_errors_list = [[], [], [], [], [], [], []]
-    r_pa_mpjpe_errors_list = [[], [], [], [], [], [], []]
-    r_pa_vertices_errors_list = [[], [], [], [], [], [], []]
+    steps = config['exper']['preprocess']['steps']
+
+    # mpjpe_errors_list = [[], [], [], [], [], [], []]
+    # mpvpe_errors_list = [[], [], [], [], [], [], []]
+    # pa_mpjpe_errors_list = [[], [], [], [], [], [], []]
+    # pa_mpvpe_errors_list = [[], [], [], [], [], [], []]
+    errors_list = []
+    for i in range(4):
+        errors_list.append([])
+        for j in range(steps):
+            errors_list[i].append([])
+            for k in range(len(labels_list)):
+                errors_list[i][j].append([])
+
+    metrics = ['MPJPE', 'PA_MPJPE', 'MPVPE', 'PA_MPVPE']
 
     mkdir(config['exper']['output_dir'])
 
@@ -261,91 +278,52 @@ def run_eval_and_show(config, val_dataloader, EvRGBStereo_model, _loss):
     last_seq = 0
 
     with torch.no_grad():
-        for iteration, (frames, meta_data) in enumerate(val_dataloader):
+        for iteration, (frames, meta_data) in enumerate(val_dataloader_normal):
 
-            if last_seq != str(meta_data['seq_id'][0].item()):
-                last_seq = str(meta_data['seq_id'][0].item())
+            if last_seq != str(meta_data[0]['seq_id'][0].item()):
+                last_seq = str(meta_data[0]['seq_id'][0].item())
                 print('Now for seq id: ', last_seq)
 
             device = 'cuda'
-            rgb, l_ev_frame, r_ev_frame = to_device(frames['rgb'], device), \
-                                          to_device(frames['l_ev_frame'], device), \
-                                          to_device(frames['r_ev_frame'], device)
+            batch_size = frames[0]['rgb'].shape[0]
+            frames = to_device(frames, device)
             meta_data = to_device(meta_data, device)
 
-            preds = EvRGBStereo_model(rgb.permute(0, 3, 1, 2), l_ev_frame.permute(0, 3, 1, 2),
-                                      r_ev_frame.permute(0, 3, 1, 2), meta_data)
+            preds, atts = EvRGBStereo_model(frames, return_att=True, decode_all=False)
             batch_time.update(time.time() - end)
             end = time.time()
 
-            fast_index = meta_data['seq_type'] == 6
-            no_fast_index = torch.logical_not(fast_index)
-            if torch.sum(fast_index) != 0:
-                # pred_3d_joints = preds['pred_3d_joints_l'][fast_index]
-                # pred_3d_joints_abs = pred_3d_joints + meta_data['3d_joints_rgb'][fast_index][:, :1]
-                # pred_2d_joints = torch.bmm(meta_data['K_event_l'][fast_index], pred_3d_joints_abs.permute(0, 2, 1)).permute(0, 2, 1)
-                # pred_2d_joints = pred_2d_joints[:, :, :2] / pred_2d_joints[:, :, 2:]
-                # gt_2d_joints = meta_data['2d_joints_event_'][fast_index]
-                # pred_2d_joints_aligned = pred_2d_joints - pred_2d_joints[:, :1] + gt_2d_joints[:, :1]
-                # # print('fast index', fast_index)
-                # mpjpe_eachjoint_eachitem = torch.sqrt(torch.sum((pred_2d_joints_aligned - gt_2d_joints) ** 2, dim=-1))[meta_data['joints_2d_valid_ev'][fast_index]]
-                # # print('mpjpe shape', mpjpe_eachjoint_eachitem.shape)
-                # # print('seq type shape', meta_data['seq_type'][fast_index])
-                # update_errors_list(mpjpe_errors_list, mpjpe_eachjoint_eachitem, meta_data['seq_type'][fast_index][meta_data['joints_2d_valid_ev'][fast_index]])
-                pass
-            if torch.sum(no_fast_index) != 0:
-                gt_3d_joints = meta_data['3d_joints_rgb'][no_fast_index]
+            for step in range(steps):
+
+                bbox_valid = meta_data[step]['bbox_valid']
+                mano_valid = meta_data[step]['mano_valid'] * bbox_valid
+                joints_3d_valid = meta_data[step]['joints_3d_valid'] * bbox_valid
+
+                gt_3d_joints = meta_data[step]['3d_joints']
                 gt_3d_joints_sub = gt_3d_joints - gt_3d_joints[:, :1]
-                pred_3d_joints = preds['pred_3d_joints_l'][no_fast_index]
+                pred_3d_joints = preds[step][-1]['pred_3d_joints']
                 pred_3d_joints_sub = pred_3d_joints - pred_3d_joints[:, :1]
                 mpjpe_eachjoint_eachitem = torch.sqrt(
                     torch.sum((pred_3d_joints_sub - gt_3d_joints_sub) ** 2, dim=-1)) * 1000.
-                update_errors_list(l_mpjpe_errors_list, mpjpe_eachjoint_eachitem, meta_data['seq_type'][no_fast_index])
+                update_errors_list(errors_list[0][step], mpjpe_eachjoint_eachitem[joints_3d_valid], meta_data[step]['seq_type'][joints_3d_valid])
                 align_pred_3d_joints_sub = compute_similarity_transform_batch(pred_3d_joints_sub, gt_3d_joints_sub)
                 pa_mpjpe_eachjoint_eachitem = torch.sqrt(torch.sum((align_pred_3d_joints_sub - gt_3d_joints_sub.detach().cpu()) ** 2, dim=-1)) * 1000.
-                update_errors_list(l_pa_mpjpe_errors_list, pa_mpjpe_eachjoint_eachitem, meta_data['seq_type'][no_fast_index])
+                update_errors_list(errors_list[1][step], pa_mpjpe_eachjoint_eachitem[joints_3d_valid], meta_data[step]['seq_type'][joints_3d_valid])
 
-                manos = meta_data['mano_rgb']
+                manos = meta_data[step]['mano']
                 gt_dest_mano_output = mano_layer(
-                    global_orient=manos['rot_pose'][no_fast_index].reshape(-1, 3),
-                    hand_pose=manos['hand_pose'][no_fast_index].reshape(-1, 45),
-                    betas=manos['shape'][no_fast_index].reshape(-1, 10),
-                    transl=manos['trans'][no_fast_index].reshape(-1, 3)
+                    global_orient=manos['rot_pose'].reshape(-1, 3),
+                    hand_pose=manos['hand_pose'].reshape(-1, 45),
+                    betas=manos['shape'].reshape(-1, 10),
+                    transl=manos['trans'].reshape(-1, 3)
                 )
                 gt_vertices_sub = gt_dest_mano_output.vertices - gt_dest_mano_output.joints[:, :1, :]
-                error_vertices = torch.mean(torch.abs(preds['pred_vertices_l'][no_fast_index] - gt_vertices_sub), dim=0)
-                update_errors_list(l_vertices_errors_list, error_vertices, meta_data['seq_type'][no_fast_index])
+                error_vertices = torch.mean(torch.abs(preds[step][-1]['pred_vertices'] - gt_vertices_sub), dim=(1, 2))
+                update_errors_list(errors_list[2][step], error_vertices[mano_valid], meta_data[step]['seq_type'][mano_valid])
 
-                aligned_pred_vertices = compute_similarity_transform_batch(preds['pred_vertices_l'][no_fast_index], gt_vertices_sub)
-                pa_error_vertices = torch.mean(torch.abs(aligned_pred_vertices - gt_vertices_sub.detach().cpu()), dim=0)
-                update_errors_list(l_pa_vertices_errors_list, pa_error_vertices, meta_data['seq_type'][no_fast_index])
-                ## left
-                if config['model']['method']['ere_usage'][2]:
-                    gt_3d_joints = meta_data['3d_joints'][no_fast_index]
-                    gt_3d_joints_sub = gt_3d_joints - gt_3d_joints[:, :1]
-                    pred_3d_joints = preds['pred_3d_joints_r'][no_fast_index]
-                    pred_3d_joints_sub = pred_3d_joints - pred_3d_joints[:, :1]
-                    mpjpe_eachjoint_eachitem = torch.sqrt(
-                        torch.sum((pred_3d_joints_sub - gt_3d_joints_sub) ** 2, dim=-1)) * 1000.
-                    update_errors_list(r_mpjpe_errors_list, mpjpe_eachjoint_eachitem, meta_data['seq_type'][no_fast_index])
-                    align_pred_3d_joints_sub = compute_similarity_transform_batch(pred_3d_joints_sub, gt_3d_joints_sub)
-                    pa_mpjpe_eachjoint_eachitem = torch.sqrt(torch.sum((align_pred_3d_joints_sub - gt_3d_joints_sub.detach().cpu()) ** 2, dim=-1)) * 1000.
-                    update_errors_list(r_pa_mpjpe_errors_list, pa_mpjpe_eachjoint_eachitem, meta_data['seq_type'][no_fast_index])
-
-                    manos = meta_data['mano']
-                    gt_dest_mano_output = mano_layer(
-                        global_orient=manos['rot_pose'][no_fast_index].reshape(-1, 3),
-                        hand_pose=manos['hand_pose'][no_fast_index].reshape(-1, 45),
-                        betas=manos['shape'][no_fast_index].reshape(-1, 10),
-                        transl=manos['trans'][no_fast_index].reshape(-1, 3)
-                    )
-                    gt_vertices_sub = gt_dest_mano_output.vertices - gt_dest_mano_output.joints[:, :1, :]
-                    error_vertices = torch.mean(torch.abs(preds['pred_vertices_r'][no_fast_index] - gt_vertices_sub), dim=0)
-                    update_errors_list(r_vertices_errors_list, error_vertices, meta_data['seq_type'][no_fast_index])
-
-                    aligned_pred_vertices = compute_similarity_transform_batch(preds['pred_vertices_r'][no_fast_index], gt_vertices_sub)
-                    pa_error_vertices = torch.mean(torch.abs(aligned_pred_vertices - gt_vertices_sub.detach().cpu()), dim=0)
-                    update_errors_list(r_pa_vertices_errors_list, pa_error_vertices, meta_data['seq_type'][no_fast_index])
+                aligned_pred_vertices = compute_similarity_transform_batch(preds[step][-1]['pred_vertices'], gt_vertices_sub)
+                pa_error_vertices = torch.mean(torch.abs(aligned_pred_vertices - gt_vertices_sub.detach().cpu()), dim=(1, 2))
+                update_errors_list(errors_list[3][step], pa_error_vertices[mano_valid], meta_data[step]['seq_type'][mano_valid])
 
             if iteration*config['exper']['per_gpu_batch_size'] % 20 != 0:
                 continue
@@ -364,90 +342,90 @@ def run_eval_and_show(config, val_dataloader, EvRGBStereo_model, _loss):
                 #             for face in faces:
                 #                 print('f %d %d %d'%(face[0]+1, face[1]+1, face[2]+1), file=file_object)
 
-                if config['eval']['output']['attention_map']:
-                    id_tmp = 0
-                    annot_dir = op.join(config['exper']['output_dir'], str(meta_data['seq_id'][id_tmp].item()), 'attention', str(meta_data['annot_id'][id_tmp].item()))
-                    mkdir(annot_dir)
-                    encoder_ids = range(len(config['model']['tfm']['input_feat_dim']))
-                    layer_ids = range(config['model']['tfm']['num_hidden_layers'])
-                    for encoder_id in encoder_ids:
-                        for layer_id in layer_ids:
-                            if 'att' in preds.keys():
-
-                                att_map = preds['att'][encoder_id][layer_id][id_tmp]
-
-                                attention_all = np.sum(att_map.detach().cpu().numpy(), axis=0)
-                                max_j_all = np.max(attention_all, axis=1, keepdims=True)
-                                min_j_all = np.min(attention_all, axis=1, keepdims=True)
-                                attention_all_normal = (attention_all - min_j_all) / (max_j_all - min_j_all)
-                                fig_, axes_ = plt.subplots(nrows=1, ncols=1, figsize=(6, 6))
-                                axes_.title.set_text('Attention Map All')
-                                axes_.imshow(attention_all_normal, cmap="inferno")
-                                fig_.savefig(op.join(annot_dir, 'attention_all_encoder{}_layer{}.png'.format(encoder_id, layer_id)))
-                                fig_.clear()
-
-                                shapes = np.array([16, 36, 16], dtype=np.int32)
-                                cnn_shape = shapes * np.array(config['model']['method']['ere_usage'])
-                                att_map_all = np.zeros((21, cnn_shape.sum()), dtype=np.float32)
-                                for i in range(config['model']['tfm']['num_attention_heads']):
-                                    att_map_all += att_map[i][:21, -cnn_shape.sum():].detach().cpu().numpy()
-                                max_j = np.max(att_map_all, axis=1, keepdims=True)
-                                min_j = np.min(att_map_all, axis=1, keepdims=True)
-                                att_map_joints = (att_map_all - min_j) / (max_j - min_j)
-                                att_map_joints = att_map_joints[indices_change(1, 2)]
-                                fig, axes = plt.subplots(nrows=3, ncols=7*len(cnn_shape), figsize=(12*len(cnn_shape), 6))
-                                for i in range(3):
-                                    for j in range(7):
-                                        joint_id = 7 * i + j
-                                        col = j * sum(config['model']['method']['ere_usage'])
-                                        if config['model']['method']['ere_usage'][0]:
-                                            axes[i, col].imshow(l_ev_frame[id_tmp].detach().cpu().numpy())
-                                            att_map_ = cv2.resize(att_map_joints[joint_id, :cnn_shape[0]].reshape(4, 4),
-                                                                  (l_ev_frame.shape[1:3]),
-                                                                  interpolation=cv2.INTER_NEAREST)
-                                            axes[i, col].imshow(att_map_, cmap="inferno", alpha=0.6)
-                                            axes[i, col].title.set_text(f"Event {cfg.J_NAME[joint_id]}")
-                                            axes[i, col].axis("off")
-                                            col += 1
-                                        if config['model']['method']['ere_usage'][1]:
-                                            axes[i, col].imshow(rgb[id_tmp].detach().cpu().numpy())
-                                            att_map_ = cv2.resize(att_map_joints[joint_id, cnn_shape[0]:sum(cnn_shape[:2])].reshape(6, 6), (rgb.shape[1:3]), interpolation=cv2.INTER_NEAREST)
-                                            axes[i, col].imshow(att_map_, cmap="inferno", alpha=0.6)
-                                            axes[i, col].title.set_text(f"RGB {cfg.J_NAME[joint_id]}")
-                                            axes[i, col].axis("off")
-                                            col += 1
-
-                                # fig.show()
-                                fig.savefig(op.join(annot_dir, 'encoder{}_layer{}.png'.format(encoder_id, layer_id)))
-                                fig.clear()
-
-                        # todo draw attention map
-                        pass
-
-                if config['eval']['output']['rendered']:
-                    key = config['eval']['output']['vis_rendered']
-                    if key == 'rgb':
-                        img_bg = frames[key+'_ori']/255.
-                        hw = config['data']['rgb_hw']
-                    else:
-                        img_bg = frames[key + '_ori']
-                        hw = config['data']['event_hw']
-                    img_render = render.visualize(
-                        K=meta_data['K_'+key].detach(),
-                        R=meta_data['R_'+key].detach(),
-                        t=meta_data['t_'+key].detach(),
-                        hw=hw,
-                        img_bg=img_bg,
-                        vertices=predicted_meshes.detach(),
-                    )
-                    for i in range(img_render.shape[0]):
-                        img_dir = op.join(config['exper']['output_dir'], str(meta_data['seq_id'][i].item()), 'rendered')
-                        mkdir(img_dir)
-                        imageio.imwrite(op.join(img_dir, '{}.jpg'.format(meta_data['annot_id'][i].item())),
-                                        (img_render[i].detach().cpu().numpy() * 255).astype(np.uint8))
+                # if config['eval']['output']['attention_map']:
+                #     id_tmp = 0
+                #     annot_dir = op.join(config['exper']['output_dir'], str(meta_data['seq_id'][id_tmp].item()), 'attention', str(meta_data['annot_id'][id_tmp].item()))
+                #     mkdir(annot_dir)
+                #     encoder_ids = range(len(config['model']['tfm']['input_feat_dim']))
+                #     layer_ids = range(config['model']['tfm']['num_hidden_layers'])
+                #     for encoder_id in encoder_ids:
+                #         for layer_id in layer_ids:
+                #             if 'att' in preds.keys():
+                #
+                #                 att_map = preds['att'][encoder_id][layer_id][id_tmp]
+                #
+                #                 attention_all = np.sum(att_map.detach().cpu().numpy(), axis=0)
+                #                 max_j_all = np.max(attention_all, axis=1, keepdims=True)
+                #                 min_j_all = np.min(attention_all, axis=1, keepdims=True)
+                #                 attention_all_normal = (attention_all - min_j_all) / (max_j_all - min_j_all)
+                #                 fig_, axes_ = plt.subplots(nrows=1, ncols=1, figsize=(6, 6))
+                #                 axes_.title.set_text('Attention Map All')
+                #                 axes_.imshow(attention_all_normal, cmap="inferno")
+                #                 fig_.savefig(op.join(annot_dir, 'attention_all_encoder{}_layer{}.png'.format(encoder_id, layer_id)))
+                #                 fig_.clear()
+                #
+                #                 shapes = np.array([16, 36, 16], dtype=np.int32)
+                #                 cnn_shape = shapes * np.array(config['model']['method']['ere_usage'])
+                #                 att_map_all = np.zeros((21, cnn_shape.sum()), dtype=np.float32)
+                #                 for i in range(config['model']['tfm']['num_attention_heads']):
+                #                     att_map_all += att_map[i][:21, -cnn_shape.sum():].detach().cpu().numpy()
+                #                 max_j = np.max(att_map_all, axis=1, keepdims=True)
+                #                 min_j = np.min(att_map_all, axis=1, keepdims=True)
+                #                 att_map_joints = (att_map_all - min_j) / (max_j - min_j)
+                #                 att_map_joints = att_map_joints[indices_change(1, 2)]
+                #                 fig, axes = plt.subplots(nrows=3, ncols=7*len(cnn_shape), figsize=(12*len(cnn_shape), 6))
+                #                 for i in range(3):
+                #                     for j in range(7):
+                #                         joint_id = 7 * i + j
+                #                         col = j * sum(config['model']['method']['ere_usage'])
+                #                         if config['model']['method']['ere_usage'][0]:
+                #                             axes[i, col].imshow(l_ev_frame[id_tmp].detach().cpu().numpy())
+                #                             att_map_ = cv2.resize(att_map_joints[joint_id, :cnn_shape[0]].reshape(4, 4),
+                #                                                   (l_ev_frame.shape[1:3]),
+                #                                                   interpolation=cv2.INTER_NEAREST)
+                #                             axes[i, col].imshow(att_map_, cmap="inferno", alpha=0.6)
+                #                             axes[i, col].title.set_text(f"Event {cfg.J_NAME[joint_id]}")
+                #                             axes[i, col].axis("off")
+                #                             col += 1
+                #                         if config['model']['method']['ere_usage'][1]:
+                #                             axes[i, col].imshow(rgb[id_tmp].detach().cpu().numpy())
+                #                             att_map_ = cv2.resize(att_map_joints[joint_id, cnn_shape[0]:sum(cnn_shape[:2])].reshape(6, 6), (rgb.shape[1:3]), interpolation=cv2.INTER_NEAREST)
+                #                             axes[i, col].imshow(att_map_, cmap="inferno", alpha=0.6)
+                #                             axes[i, col].title.set_text(f"RGB {cfg.J_NAME[joint_id]}")
+                #                             axes[i, col].axis("off")
+                #                             col += 1
+                #
+                #                 # fig.show()
+                #                 fig.savefig(op.join(annot_dir, 'encoder{}_layer{}.png'.format(encoder_id, layer_id)))
+                #                 fig.clear()
+                #
+                #         # todo draw attention map
+                #         pass
+                #
+                # if config['eval']['output']['rendered']:
+                #     key = config['eval']['output']['vis_rendered']
+                #     if key == 'rgb':
+                #         img_bg = frames[key+'_ori']/255.
+                #         hw = config['data']['rgb_hw']
+                #     else:
+                #         img_bg = frames[key + '_ori']
+                #         hw = config['data']['event_hw']
+                #     img_render = render.visualize(
+                #         K=meta_data['K_'+key].detach(),
+                #         R=meta_data['R_'+key].detach(),
+                #         t=meta_data['t_'+key].detach(),
+                #         hw=hw,
+                #         img_bg=img_bg,
+                #         vertices=predicted_meshes.detach(),
+                #     )
+                #     for i in range(img_render.shape[0]):
+                #         img_dir = op.join(config['exper']['output_dir'], str(meta_data['seq_id'][i].item()), 'rendered')
+                #         mkdir(img_dir)
+                #         imageio.imwrite(op.join(img_dir, '{}.jpg'.format(meta_data['annot_id'][i].item())),
+                #                         (img_render[i].detach().cpu().numpy() * 255).astype(np.uint8))
 
             if (iteration - 1) % config['utils']['logging_steps'] == 0:
-                eta_seconds = batch_time.avg * (len(val_dataloader) / config['exper']['per_gpu_batch_size'] - iteration)
+                eta_seconds = batch_time.avg * (len(val_dataloader_normal) / config['exper']['per_gpu_batch_size'] - iteration)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
                 if is_main_process():
                     print(
@@ -458,15 +436,46 @@ def run_eval_and_show(config, val_dataloader, EvRGBStereo_model, _loss):
                         + '   compute: {:.4f}'.format(batch_time.avg)
                     )
 
-    print_items(l_mpjpe_errors_list, labels_list, 'L MPJPE', file)
-    print_items(l_pa_mpjpe_errors_list, labels_list, 'L PA MPJPE', file)
-    print_items(l_vertices_errors_list, labels_list, 'L MPVPE', file)
-    print_items(l_pa_vertices_errors_list, labels_list, 'L PA MPVPE', file)
+        '''
+        for fast sequences
+        '''
+        if steps > 1:
+            for iteration, (frames, meta_data) in enumerate(val_dataloader_fast):
 
-    print_items(r_mpjpe_errors_list, labels_list, 'R MPJPE', file)
-    print_items(r_pa_mpjpe_errors_list, labels_list, 'R PA MPJPE', file)
-    print_items(r_vertices_errors_list, labels_list, 'R MPVPE', file)
-    print_items(r_pa_vertices_errors_list, labels_list, 'R PA MPVPE', file)
+                if last_seq != str(meta_data[0]['seq_id'][0].item()):
+                    last_seq = str(meta_data[0]['seq_id'][0].item())
+                    print('Now for seq id: ', last_seq)
+
+                device = 'cuda'
+                batch_size = frames[0]['rgb'].shape[0]
+                frames = to_device(frames, device)
+                meta_data = to_device(meta_data, device)
+
+                preds, atts = EvRGBStereo_model(frames, return_att=True, decode_all=False)
+                batch_time.update(time.time() - end)
+                end = time.time()
+                steps = len(frames)
+                for step in range(steps):
+                    joints_2d_valid = meta_data[step]['joints_2d_valid_ev'] * meta_data[step]['bbox_valid']
+
+                    pred_3d_joints = preds[step][-1]['pred_3d_joints']
+                    pred_3d_joints_abs = pred_3d_joints + meta_data[step]['3d_joints'][:, :1]
+                    pred_2d_joints = torch.bmm(meta_data[step]['K_event'], pred_3d_joints_abs.permute(0, 2, 1)).permute(0, 2, 1)
+                    pred_2d_joints = pred_2d_joints[:, :, :2] / pred_2d_joints[:, :, 2:]
+                    gt_2d_joints = meta_data[step]['2d_joints_event']
+                    pred_2d_joints_aligned = pred_2d_joints - pred_2d_joints[:, :1] + gt_2d_joints[:, :1]
+                    # print('fast index', fast_index)
+                    mpjpe_eachjoint_eachitem = torch.sqrt(torch.sum((pred_2d_joints_aligned - gt_2d_joints) ** 2, dim=-1))
+                    # print('mpjpe shape', mpjpe_eachjoint_eachitem.shape)
+                    # print('seq type shape', meta_data['seq_type'][fast_index])
+                    update_errors_list(errors_list[0][step], mpjpe_eachjoint_eachitem[joints_2d_valid], meta_data[step]['seq_type'][joints_2d_valid])
+
+    for step in range(steps):
+        file.write('Step: {}'.format(step) + '\n')
+        for i, metric in enumerate(metrics):
+            print_items(errors_list[i][step], labels_list, metric, file)
+            file.write('\n')
+        file.write('\n\n')
 
 
     # if config['eval']['output']['save']:
@@ -483,7 +492,7 @@ def run_eval_and_show(config, val_dataloader, EvRGBStereo_model, _loss):
     total_eval_time = time.time() - start_eval_time
     total_time_str = str(datetime.timedelta(seconds=total_eval_time))
     print('Total eval time: {} ({:.4f} s / iter)'.format(
-        total_time_str, total_eval_time / (len(val_dataloader) / config['exper']['per_gpu_batch_size']))
+        total_time_str, total_eval_time / ((len(val_dataloader_normal) + len(val_dataloader_fast)) / config['exper']['per_gpu_batch_size']))
     )
 
     return
@@ -647,11 +656,14 @@ def main(config):
     _loss.to(config['exper']['device'])
 
     if config['exper']['run_eval_only'] == True:
-        val_dataloader = make_hand_data_loader(config)
+        val_dataloader_normal = make_hand_data_loader(config)
+        config_fast = copy.deepcopy(config)
+        config_fast['eval']['fast'] = True
+        val_dataloader_fast = make_hand_data_loader(config_fast)
         if config['eval']['multiscale']:
-            run_eval_and_save(config, val_dataloader, _model)
+            run_eval_and_save(config, val_dataloader_normal, val_dataloader_fast, _model)
         else:
-            run_eval_and_show(config, val_dataloader, _model, _loss)
+            run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, _model, _loss)
 
     else:
         train_dataloader = make_hand_data_loader(config)

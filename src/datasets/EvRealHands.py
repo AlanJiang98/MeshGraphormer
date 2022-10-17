@@ -50,22 +50,34 @@ class EvRealHands(Dataset):
         self.rgb_augment = PhotometricAug(self.config['exper']['augment']['rgb_photometry'], not self.config['exper']['run_eval_only'])
         self.event_augment = PhotometricAug(self.config['exper']['augment']['event_photometry'], not self.config['exper']['run_eval_only'])
         self.get_bbox_inter_f()
+        self.normalize_img = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                                  std=[0.229, 0.224, 0.225])
         pass
 
     @staticmethod
-    def get_events_annotations_per_sequence(dir, is_train=True):
+    def get_events_annotations_per_sequence(dir, is_train=True, is_fast=False):
         if not osp.isdir(dir):
             raise FileNotFoundError('illegal directions for event sequence: {}'.format(dir))
         id = dir.split('/')[-1]
         annot = json_read(os.path.join(dir, 'annot.json'))
-        if not is_train:
-            if not annot['annoted'] and not (annot['motion_type'] == 'fast'):
-                return {}
-        if not is_train and annot['motion_type'] == 'fast':
-            mano_ids = [int(id) for id in annot['3d_joints'].keys()]
-        else:
+
+        if is_train and not (annot['motion_type'] == 'fast'):
             mano_ids = [int(id) for id in annot['manos'].keys()]
+        elif not is_train:
+            if is_fast:
+                if annot['motion_type'] == 'fast':
+                    mano_ids = [int(id) for id in annot['3d_joints'].keys()]
+                else:
+                    return {}
+            else:
+                if not (annot['motion_type'] == 'fast') and annot['annoted']:
+                    mano_ids = [int(id) for id in annot['manos'].keys()]
+                else:
+                    return {}
+        else:
+            return {}
         mano_ids.sort()
+
         # mano_ids_np = np.array(mano_ids, dtype=np.int32)
         # indices = np.diff(mano_ids_np) == 1
         # annot['sample_ids'] = [str(id) for id in mano_ids_np[1:][indices]]
@@ -111,19 +123,22 @@ class EvRealHands(Dataset):
             self.seq_ids += all_sub_2_seq_ids[str(sub_id)]
         if self.config['exper']['debug']:
             if self.config['exper']['run_eval_only']:
-                seq_id = '53'
+                seq_ids = ['53', '4']
             else:
-                seq_id = '9'
-            data = self.get_events_annotations_per_sequence(osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id), not self.config['exper']['run_eval_only'])
-            self.data = data
-            self.seq_ids = [seq_id]
+                seq_ids = ['24', '18']
+            for seq_id in seq_ids:
+                data = self.get_events_annotations_per_sequence(osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id),
+                                                            not self.config['exper']['run_eval_only'], self.config['eval']['fast'])
+                self.data.update(data)
+            self.seq_ids = seq_ids
         else:
             global data_seqs
             data_seqs = {}
             pool = mp.Pool(mp.cpu_count())
             for seq_id in self.seq_ids:
                 pool.apply_async(EvRealHands.get_events_annotations_per_sequence,
-                                 args=(osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id), not self.config['exper']['run_eval_only'], ),
+                                 args=(osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id),
+                                       not self.config['exper']['run_eval_only'], self.config['eval']['fast'],),
                                  callback=collect_data)
             pool.close()
             pool.join()
@@ -390,6 +405,15 @@ class EvRealHands(Dataset):
         bbox_size = torch.max(torch.tensor([x_max-x_min, y_max-y_min])) * rate
         return torch.tensor([center_x, center_y, bbox_size]).int()
 
+    def valid_bbox(self, bbox, hw=[260, 346]):
+        if (bbox[:2] < 0).any() or bbox[0] > hw[1] or bbox[1] > hw[0] or bbox[2] < 10 or bbox[2] > 400:
+            return False
+        else:
+            return True
+
+    def get_default_bbox(self, hw=[260, 346], size=128):
+        return torch.tensor([hw[1] / 2, hw[0] / 2, size], dtype=torch.float32)
+
     def crop(self, bbox, frame, size, hw=[260, 346]):
         lf_top = (bbox[:2] - bbox[2] / 2).int()
         rt_dom = lf_top + bbox[2].int()
@@ -427,7 +451,11 @@ class EvRealHands(Dataset):
                 # self.data[seq_id]['event'][:, 3],
                 timestamp
             )
-            index_l = max(0, index_r - self.config['exper']['preprocess']['num_window'])
+            if not self.config['exper']['run_eval_only']:
+                num = (np.random.rand(1) - 0.5) * 2 * 3000 + self.config['exper']['preprocess']['num_window']
+            else:
+                num = self.config['exper']['preprocess']['num_window']
+            index_l = max(0, index_r - int(num))
         return index_l, index_r
 
     def get_indices_from_timestamps(self, timestamps, seq_id):
@@ -633,11 +661,13 @@ class EvRealHands(Dataset):
             raise NotImplementedError('no implemention for change camera view!')
 
     def __getitem__(self, idx):
-        output = []
+        frames_output, meta_data_output = [], []
         seq_id, cam_pair, annot_id = self.get_info_from_sample_id(idx)
         test_fast = self.config['exper']['run_eval_only'] and \
                     self.data[seq_id]['annot']['motion_type'] == 'fast'
         aug_params = self.get_augment_param()
+
+        bbox_valid = True
 
         if test_fast:
             steps = 2
@@ -674,7 +704,7 @@ class EvRealHands(Dataset):
                 t_l = t_target - T_ + segment / segments * T_
                 t_r = t_target - T_ + (segment+1) / segments * T_
                 indices_ev = self.get_indices_from_timestamps([t_l, t_r], seq_id)
-                print('segment', segment, indices_ev)
+                # print('segment', segment, indices_ev)
                 ev_frame = self.get_event_repre(seq_id, indices_ev)
                 ev_frame = torch.cat([ev_frame.permute(1, 2, 0), torch.zeros((260, 346, 1))], dim=2)
                 ev_frames.append(ev_frame)
@@ -689,29 +719,31 @@ class EvRealHands(Dataset):
             meta_data['t_event'] = tf_cw_ev[:3, 3]
 
             rgb = cv2.warpAffine(np.array(rgb), aff_2d_rgb, (1064, 920), flags=cv2.INTER_LINEAR)
-            rgb = self.rgb_augment(rgb.astype(np.uint8)).astype(np.float32) / 255.
+            # self.plotshow(rgb / 255.)
+            rgb = self.rgb_augment(torch.tensor(rgb, dtype=torch.float32).permute(2, 0, 1) / 255.).permute(1, 2, 0)
+            # self.plotshow(rgb)
 
             for i in range(len(ev_frames)):
                 ev_frames[i] = cv2.warpAffine(np.array(ev_frames[i]), aff_2d_ev, (346, 260), flags=cv2.INTER_LINEAR)
-                ev_frames[i] = self.event_augment((ev_frames[i] * 255).astype(np.uint8)).astype(
-                    np.float32) / 255.
-
-            rgb = self.render_hand(
-                meta_data['mano'],
-                meta_data['K_rgb'],
-                meta_data['R_rgb'],
-                meta_data['t_rgb'],
-                hw=[920, 1064],
-                img_bg=rgb,
-            )[0]
-            ev_frames[-1] = self.render_hand(
-                meta_data['mano'],
-                meta_data['K_event'],
-                meta_data['R_event'],
-                meta_data['t_event'],
-                hw=[260, 346],
-                img_bg=ev_frames[-1],
-            )[0]
+                self.plotshow(ev_frames[i])
+                ev_frames[i] = self.event_augment(torch.tensor(ev_frames[i], dtype=torch.float32).permute(2, 0, 1)).permute(1, 2, 0)
+                # self.plotshow(ev_frames[i])
+            # rgb = self.render_hand(
+            #     meta_data['mano'],
+            #     meta_data['K_rgb'],
+            #     meta_data['R_rgb'],
+            #     meta_data['t_rgb'],
+            #     hw=[920, 1064],
+            #     img_bg=rgb,
+            # )[0]
+            # ev_frames[-1] = self.render_hand(
+            #     meta_data['mano'],
+            #     meta_data['K_event'],
+            #     meta_data['R_event'],
+            #     meta_data['t_event'],
+            #     hw=[260, 346],
+            #     img_bg=ev_frames[-1],
+            # )[0]
 
             if test_fast:
                 bbox_rgb = self.get_bbox_by_interpolation(seq_id, cam_pair[1], t_target)
@@ -728,12 +760,29 @@ class EvRealHands(Dataset):
                     bbox_ev = self.get_bbox_by_interpolation(seq_id, cam_pair[0], t_r, meta_data['K_event'], meta_data['R_event'], meta_data['t_event'])
                     bbox_evs.append(bbox_ev)
 
-            lt_rgb, sc_rgb, rgb_crop = self.crop(bbox_rgb, rgb, self.config['exper']['bbox']['rgb']['size'], hw=[920, 1064])
+            if not self.valid_bbox(bbox_rgb, hw=[920, 1064]):
+                bbox_rgb = self.get_default_bbox(hw=[920, 1064], size=self.config['exper']['bbox']['rgb']['size'])
+                bbox_valid = False
+                # self.plotshow(rgb)
+                # print('annot id', annot_id)
+
+            for i, bbox_ev in enumerate(bbox_evs):
+                if not self.valid_bbox(bbox_ev, hw=[260, 346]):
+                    bbox_evs[i] = self.get_default_bbox(hw=[260, 346], size=self.config['exper']['bbox']['event']['size'])
+                    bbox_valid = False
+                    # self.plotshow(ev_frames[i])
+                    # print('annot id', annot_id)
+
+            lt_rgb, sc_rgb, rgb_crop = self.crop(bbox_rgb, np.array(rgb), self.config['exper']['bbox']['rgb']['size'], hw=[920, 1064])
             rgb_crop = torch.tensor(rgb_crop, dtype=torch.float32)
+            # self.plotshow(rgb_crop)
+            rgb_crop = self.normalize_img(rgb_crop.permute(2, 0, 1)).permute(1, 2, 0)
+            # self.plotshow(rgb_crop)
+
             ev_frames_crop = []
             lt_evs, sc_evs = [], []
             for i, ev_frame in enumerate(ev_frames):
-                lt_ev, sc_ev, ev_frame_crop = self.crop(bbox_evs[i], ev_frame, self.config['exper']['bbox']['event']['size'],
+                lt_ev, sc_ev, ev_frame_crop = self.crop(bbox_evs[i], np.array(ev_frame), self.config['exper']['bbox']['event']['size'],
                                                  hw=[260, 346])
                 lt_evs.append(lt_ev)
                 sc_evs.append(sc_ev)
@@ -741,8 +790,8 @@ class EvRealHands(Dataset):
 
             tf_w_c = self.change_camera_view(meta_data)
 
-            self.plotshow(rgb_crop)
-            self.plotshow(ev_frames_crop[-1])
+            # self.plotshow(rgb_crop)
+            # self.plotshow(ev_frames_crop[-1])
 
             meta_data.update({
                 'lt_rgb': lt_rgb,
@@ -750,9 +799,6 @@ class EvRealHands(Dataset):
                 'lt_evs': lt_evs,
                 'sc_evs': sc_evs,
             })
-            # self.plotshow(rgb_crop)
-            # self.plotshow(l_ev_crop)
-            # self.plotshow(r_ev_crop)
 
             frames = {
                 'rgb': rgb_crop,
@@ -773,27 +819,12 @@ class EvRealHands(Dataset):
             meta_data.update({
                 'tf_w_c': tf_w_c,
             })
-            output.append({'frames': frames, 'meta_data': meta_data})
+            frames_output.append(frames)
+            meta_data_output.append(meta_data)
             annot_id = str(int(annot_id) + 1)
-        return output
-
-
-        # self.render_hand(
-        #     meta_data['mano_rgb'],
-        #     meta_data['K_rgb'],
-        #     meta_data['R_rgb'],
-        #     meta_data['t_rgb'],
-        #     hw=[920, 1064],
-        #     img_bg=rgb_aug,
-        # )
-        # self.render_hand(
-        #     meta_data['mano_rgb'],
-        #     meta_data['K_event_l'],
-        #     meta_data['R_event_l'],
-        #     meta_data['t_event_l'],
-        #     hw=[260, 346],
-        #     img_bg=l_ev_frame_aug,
-        # )
+        for i in range(len(meta_data_output)):
+            meta_data_output[i]['bbox_valid'] = bbox_valid
+        return frames_output, meta_data_output
 
     def __len__(self):
         return int(self.sample_info['samples_sum'][-1])

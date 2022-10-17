@@ -174,11 +174,15 @@ def reduce_dict(input_dict, average=True):
 
 
 def to_device(x, device):
-    if type(x) is not dict:
-        if x is not None:
-            x = x.to(device)
+    if type(x) is list:
+        for i in range(len(x)):
+            x[i] = to_device(x[i], device)
         return x
-    else:
+    elif type(x) is dict:
         for key in x.keys():
             x[key] = to_device(x[key], device)
+        return x
+    else:
+        if x is not None:
+            x = x.to(device)
         return x

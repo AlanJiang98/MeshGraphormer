@@ -9,8 +9,8 @@ data:
 model:
   bert_config: 'src/modeling/bert/bert-base-uncased/'
   method:
-    framework: 'perceiver' #'encoder_decoder_based' # 'encoder_decoder_based'
-    ere_usage: [True, True, True]
+    framework: 'encoder_based' #'encoder_decoder_based' # 'encoder_decoder_based'
+    ere_usage: [True, True, False]
   tfm:
     scale: 'L' # 'S', 'M', 'L'
     model_dim: [512, 128]
@@ -18,9 +18,9 @@ model:
     pos_type: 'sine'
     nhead: 8
     n_self_att_layers: 2
-    iterations: 1
-    perceiver_layers: 2
-    decoder_features: [True, True, True]
+    iterations: 2
+    perceiver_layers: 1
+    decoder_features: [True, True, False]
     output_attentions: True
     drop_out: 0.1
     mesh_type: 'hand'
@@ -29,7 +29,7 @@ model:
     hidden_size: -1
     intermediate_size: -1
     input_feat_dim: [ 2051, 512, 128 ]
-    hidden_feat_dim: [ 1024,256,64 ]
+    hidden_feat_dim: [ 1024, 256, 64 ]
     which_gcn: [ 0, 0, 1 ]
   backbone:
     arch: 'hrnet'
@@ -41,9 +41,9 @@ exper:
   debug: False
   run_eval_only: False
   resume_checkpoint: None
-  num_workers: 0
+  num_workers: 4
   output_dir: './output'
-  per_gpu_batch_size: 1
+  per_gpu_batch_size: 32
   lr: 0.0001
   num_train_epochs: 200
   device: 'cuda'
@@ -56,7 +56,7 @@ exper:
     event_range: 'num' # 'time'
     num_window: 5000
     cam_view: 'rgb' # 'world', 'rgb', 'event
-    steps: 3
+    steps: 1
     segments: 1
   augment:
     geometry:
@@ -92,7 +92,7 @@ exper:
         sigma: [0.1, 0.3]
       salt_pepper:
         p: 0.15
-        rate: 0.1
+        rate: 0.2
   bbox:
     rate: 1.5
     rgb:
@@ -100,10 +100,10 @@ exper:
     event:
       size: 128
   loss:
-    vertices: 100.0
-    vertices_sub: 100.0
-    3d_joints: 2000.0
-    3d_joints_from_mesh: 1000.0
+    vertices: 10.0
+    vertices_sub: 10.0
+    3d_joints: 20.0
+    3d_joints_from_mesh: 10.0
 
 eval:
   fast: False

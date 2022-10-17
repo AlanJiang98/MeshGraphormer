@@ -225,17 +225,17 @@ def get_config():
     dataset_config = ConfigParser(config['data']['dataset_yaml']).config
     config['data']['dataset_info'] = dataset_config
     config['exper']['debug'] = True
-    config['exper']['run_eval_only'] = True
+    config['exper']['run_eval_only'] = False#True
     return config
 
 config = get_config()
 
+# a = Interhand(config)
 a = EvRealHands(config)
-
 d = a[100]
 c = a[80]
-e = a[150]
-b = a[40]
+e = a[1150]
+b = a[400]
 
 # for key in a.data.keys():
 #     b = a.data[key]['event']
