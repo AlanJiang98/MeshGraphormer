@@ -50,10 +50,11 @@ class EvRGBStereo(torch.nn.Module):
         backbone_total_params = sum(p.numel() for p in backbone.parameters())
         print('RGB Backbone total parameters: {}'.format(backbone_total_params))
         ev_backbone = deepcopy(backbone)
-        ev_backbone.conv1 = torch.nn.Conv2d(2, 64, kernel_size=3, stride=2, padding=1,
-                               bias=False)
-        with torch.no_grad():
-            ev_backbone.conv1.weight[:, :2] = backbone.conv1.weight[:64, :2] * 1.5
+        # todo change backbone
+        # ev_backbone.conv1 = torch.nn.Conv2d(2, 64, kernel_size=3, stride=2, padding=1,
+        #                        bias=False)
+        # with torch.no_grad():
+        #     ev_backbone.conv1.weight[:, :2] = backbone.conv1.weight[:64, :2] * 1.5
         # torch.nn.init.kaiming_normal_(
         #     ev_backbone.conv1.weight, mode='fan_out', nonlinearity='relu')
         self.grid_feat_dim = torch.nn.Linear(1024, 2051)
@@ -188,8 +189,6 @@ class EvRGBStereo(torch.nn.Module):
             hw_ev = [self.config['exper']['bbox']['event']['size'] / 32, self.config['exper']['bbox']['event']['size'] / 32]
             hw_rgb = [self.config['exper']['bbox']['rgb']['size'] / 32, self.config['exper']['bbox']['rgb']['size'] / 32]
 
-
-
             # configurations for the first transformer
             transformer_config_1 = {"model_dim": self.config['model']['tfm']['model_dim'][0],
                                     "dropout": self.config['model']['tfm']['drop_out'],
@@ -294,7 +293,7 @@ class EvRGBStereo(torch.nn.Module):
             image_feat_list, grid_feat_list = [], []
 
             if self.config['model']['method']['ere_usage'][0]:
-                image_feat_l_ev, grid_feat_l_ev = self.ev_backbone(frames[0]['ev_frames'][0].permute(0, 3, 1, 2)[:, :2])
+                image_feat_l_ev, grid_feat_l_ev = self.ev_backbone(frames[0]['ev_frames'][0].permute(0, 3, 1, 2))#[:, :2])
                 image_feat_l_ev = image_feat_l_ev.view(batch_size, 1, 2048).expand(-1, ref_vertices.shape[-2], -1)
                 grid_feat_l_ev = torch.flatten(grid_feat_l_ev, start_dim=2)
                 grid_feat_l_ev = grid_feat_l_ev.transpose(1, 2)
@@ -313,7 +312,7 @@ class EvRGBStereo(torch.nn.Module):
                 grid_feat_list.append(grid_feat_rgb)
 
             if self.config['model']['method']['ere_usage'][2]:
-                image_feat_r_ev, grid_feat_r_ev = self.ev_backbone(frames[1]['ev_frames'][-1].permute(0, 3, 1, 2)[:, :2])
+                image_feat_r_ev, grid_feat_r_ev = self.ev_backbone(frames[1]['ev_frames'][-1].permute(0, 3, 1, 2))#[:, :2])
                 image_feat_r_ev = image_feat_r_ev.view(batch_size, 1, 2048).expand(-1, ref_vertices.shape[-2], -1)
                 grid_feat_r_ev = torch.flatten(grid_feat_r_ev, start_dim=2)
                 grid_feat_r_ev = grid_feat_r_ev.transpose(1, 2)
@@ -364,7 +363,7 @@ class EvRGBStereo(torch.nn.Module):
             hws = []
 
             if self.config['model']['method']['ere_usage'][0]:
-                image_feat_l_ev, grid_feat_l_ev = self.ev_backbone(frames[0]['ev_frames'][0].permute(0, 3, 1, 2)[:, :2])
+                image_feat_l_ev, grid_feat_l_ev = self.ev_backbone(frames[0]['ev_frames'][0].permute(0, 3, 1, 2))#[:, :2])
                 _, _, h, w= grid_feat_l_ev.shape
                 hws.append([h, w])
                 grid_feat_l_ev = self.conv_1x1_ev(grid_feat_l_ev).flatten(2).permute(2, 0, 1)
@@ -379,7 +378,7 @@ class EvRGBStereo(torch.nn.Module):
                 grid_feat_list.append(grid_feat_rgb)
 
             if self.config['model']['method']['ere_usage'][2]:
-                image_feat_r_ev, grid_feat_r_ev = self.ev_backbone(frames[1]['ev_frames'][-1].permute(0, 3, 1, 2)[:, :2])
+                image_feat_r_ev, grid_feat_r_ev = self.ev_backbone(frames[1]['ev_frames'][-1].permute(0, 3, 1, 2))#[:, :2])
                 _, _, h, w= grid_feat_r_ev.shape
                 hws.append([h, w])
                 grid_feat_r_ev = self.conv_1x1_ev(grid_feat_r_ev).flatten(2).permute(2, 0, 1)
@@ -450,7 +449,7 @@ class EvRGBStereo(torch.nn.Module):
 
             atts = ()
             # stereo feature
-            _, grid_feat_ev = self.ev_backbone(frames[0]['ev_frames'][0].permute(0, 3, 1, 2)[:, :2])
+            _, grid_feat_ev = self.ev_backbone(frames[0]['ev_frames'][0].permute(0, 3, 1, 2))#[:, :2])
             _, _, h, w = grid_feat_ev.shape
             hws.append([h, w])
             grid_feat_ev = self.conv_1x1_ev(grid_feat_ev).flatten(2).permute(2, 0, 1)
@@ -505,7 +504,7 @@ class EvRGBStereo(torch.nn.Module):
 
             for i in range(1, len(frames)):
                 for j in range(len(frames[i]['ev_frames'])):
-                    _, grid_feat_ev = self.ev_backbone(frames[i]['ev_frames'][j].permute(0, 3, 1, 2)[:, :2])
+                    _, grid_feat_ev = self.ev_backbone(frames[i]['ev_frames'][j].permute(0, 3, 1, 2))#[:, :2])
                     ev_update_features = self.conv_1x1_ev(grid_feat_ev).flatten(2).permute(2, 0, 1)
                     ev_latent_1, ev_latent_2, att_ = infer_encode(self.event_encoders, ev_update_features,
                                                             [pos_enc_ev_1, pos_enc_ev_2], return_att, self.dim_reduce_event)

@@ -94,11 +94,6 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
     max_iter = len(train_dataloader)
     iters_per_epoch = max_iter // config['exper']['num_train_epochs']
 
-    optimizer = torch.optim.Adam(params=list(EvRGBStereo_model.parameters()),
-                                 lr=config['exper']['lr'],
-                                 betas=(0.9, 0.999),
-                                 weight_decay=0)
-
     if config['exper']['distributed']:
         EvRGBStereo_model = torch.nn.parallel.DistributedDataParallel(
             EvRGBStereo_model, device_ids=[int(os.environ["LOCAL_RANK"])],
@@ -111,18 +106,28 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
             find_unused_parameters=True,
         )
 
+    # todo change the pos of the optimizer
+    optimizer = torch.optim.Adam(params=list(EvRGBStereo_model.parameters()),
+                                 lr=config['exper']['lr'],
+                                 betas=(0.9, 0.999),
+                                 weight_decay=0)
+
+    # todo add scheduler
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config['exper']['num_train_epochs'])
+
     start_training_time = time.time()
     end = time.time()
 
     batch_time = AverageMeter()
     data_time = AverageMeter()
     log_losses = AverageMeter()
+    last_epoch = 0
 
     for iteration, (frames, meta_data) in enumerate(train_dataloader):
         EvRGBStereo_model.train()
         iteration += 1
         epoch = iteration // iters_per_epoch
-        adjust_learning_rate(optimizer, epoch, config)
+        # adjust_learning_rate(optimizer, epoch, config)
         data_time.update(time.time() - end)
 
         device = 'cuda'
@@ -138,7 +143,10 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
         loss_sum.backward()
         torch.nn.utils.clip_grad_norm_(EvRGBStereo_model.parameters(), 0.3)
         optimizer.step()
+        if last_epoch != epoch:
+            scheduler.step()
 
+        last_epoch = epoch
         if is_main_process():
             for key in loss_items.keys():
                 tf_logger.add_scalar(key, loss_items[key], iteration)
@@ -650,7 +658,8 @@ def main(config):
             torch.cuda.empty_cache()
 
     _model.to(config['exper']['device'])
-    print("Training parameters %s", str(config))
+    if is_main_process():
+        print("Training parameters %s", str(config))
 
     _loss = Loss(config)
     _loss.to(config['exper']['device'])

@@ -9,7 +9,7 @@ import os.path as op
 import torch
 import logging
 import code
-from src.utils.comm import get_world_size
+from src.utils.comm import get_world_size, is_main_process
 from src.datasets.Freihand0 import FreiHand0
 from src.datasets.EvRealHands import EvRealHands
 from src.datasets.Interhand import Interhand
@@ -99,9 +99,10 @@ def make_hand_data_loader(config, start_iter=0):
         images_per_batch = images_per_gpu * get_world_size()
         iters_per_batch = len(dataset) // images_per_batch
         num_iters = iters_per_batch * config['exper']['num_train_epochs']
-        print("Train with {} images per GPU.".format(images_per_gpu))
-        print("Total batch size {}".format(images_per_batch))
-        print("Total training steps {}".format(num_iters))
+        if is_main_process():
+            print("Train with {} images per GPU.".format(images_per_gpu))
+            print("Total batch size {}".format(images_per_batch))
+            print("Total training steps {}".format(num_iters))
     else:
         shuffle = False
         images_per_gpu = config['exper']['per_gpu_batch_size']

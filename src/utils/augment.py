@@ -55,7 +55,11 @@ class PhotometricAug(object):
         index = (torch.rand_like(x) < rate)[0]
         x_ = x.clone()
         x_[channel] += index * torch.rand_like(x)[0]
-        return torch.clip(x_, 0, 1.)
+        x_[:2] = torch.clip(x_[:2], 0, 1.)
+        if x_[2].any() != 0:
+            noise = torch.randn_like(x)[0] * (channel * 2 -1)
+            x_[2] = torch.clip(noise * index + x_[2], -1, 1)
+        return x_
 
     def __call__(self, x):
         if not self.is_train:

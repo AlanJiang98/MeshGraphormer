@@ -213,9 +213,12 @@ def get_intepolate_weight(events, weight, height, width, is_LNES=False):
         return events_tmp[mask], weights_final[mask]
 
 
-def event_to_LNES(event_tmp, height=260, width=346, interpolate=False):
+def event_to_LNES(event_tmp, height=260, width=346, count=False, interpolate=False):
     ts = event_tmp[:, 3]
-    img = torch.zeros((2, height, width), dtype=torch.float32)
+    if count:
+        img = torch.zeros((3, height, width), dtype=torch.float32)
+    else:
+        img = torch.zeros((2, height, width), dtype=torch.float32)
     if interpolate:
         events, weights = get_intepolate_weight(event_tmp, ts, height, width, is_LNES=True)
     else:
@@ -223,7 +226,18 @@ def event_to_LNES(event_tmp, height=260, width=346, interpolate=False):
     if events.dtype is not torch.long:
         xyp = events[:, :3].clone().long()
     img[xyp[:, 2], xyp[:, 1], xyp[:, 0]] = weights
-    return img[[1, 0], :, :]
+    if count:
+        #todo repre check
+        weight_polarity = event_tmp[:, 2] * 2 - 1
+        if interpolate:
+            xys, weights = get_intepolate_weight(event_tmp[:, :2], weight_polarity.float(), height, width)
+        else:
+            xys, weights = event_tmp[:, :2].clone().long(), weight_polarity
+        img[2].index_put_((xys[:, 1], xys[:, 0]), weights, accumulate=True)
+        img[2] = torch.clip(img[2] / 2, -1, 1)
+        return img[[1, 0, 2], :, :]
+    else:
+        return img[[1, 0], :, :]
 
 
 def event_count_to_frame(xy, weight, height=260, width=346, interpolate=False):
@@ -253,6 +267,7 @@ def event_representations(events, repre='LNES', hw=(260, 346)):
         ev_frame = event_to_LNES(events, height=hw[0], width=hw[1])
     if repre == 'eci':
         ev_frame = event_to_channels(events, height=hw[0], width=hw[1])
-    if repre == 'time_surface':
+    if repre == 'LNES-Count':
+        ev_frame = event_to_LNES(events, height=hw[0], width=hw[1], count=True)
         pass
     return ev_frame

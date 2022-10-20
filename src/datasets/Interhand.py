@@ -33,11 +33,11 @@ from pytorch3d.utils import cameras_from_opencv_projection
 
 
 def collect_data(data):
-    global samples, bbox_inter
+    global samples, bbox_inter_f
     for key in data[0].keys():
         samples[key] = data[0][key]
     for key in data[1].keys():
-        bbox_inter[key] = data[1][key]
+        bbox_inter_f[key] = data[1][key]
 
 
 class Interhand(Dataset):
@@ -157,38 +157,22 @@ class Interhand(Dataset):
                         ),
                         callback=collect_data
                     )
-                    # cap_ev_dir = osp.join(self.config['data']['data_dir'], self.data_config['event_dir'], 'Capture'+cap_id)
-                    # ges_list_ = os.listdir(cap_ev_dir).sort()
-                    # for ges in ges_list_:
-                    #     if ges in self.ges_list:
-                    #         ges_index = self.ges_list.index(ges)
-                    #         for pair_id, cam_pair in enumerate(self.data_config['camera_paris']):
-                    #             if osp.exists(osp.join(cap_ev_dir, ges, 'cam'+cam_pair[0], 'events.npz')):
-                    #                 img_dir_ = osp.join(self.config['data']['data_dir'], self.data_config['img_dir'], \
-                    #                                    'Capture'+cap_id, ges, 'cam'+cam_pair[1])
-                    #                 img_name_list = os.listdir(img_dir_).sort()
-                    #                 img_id_list = [img_name[5:-4] for img_name in img_name_list]
-                    #                 img_valid_id_list = []
-                    #                 for img_id in img_id_list:
-                    #                     if img_id in self.data['mano'][cap_id].keys() and img_id in self.data['joint3d'][cap_id].keys():
-                    #                         if self.data['joint3d'][cap_id][img_id]['hand_type'] == 'right'\
-                    #                                 and self.data['joint3d'][cap_id][img_id]['hand_type_valid']:
-                    #                             img_valid_id_list.append(img_id)
-                    #                 if len(img_valid_id_list) <= 30:
-                    #                     continue
-                    #                 start = 24
-                    #                 for i, img_valid_id in enumerate(img_valid_id_list[start:-5]):
-                    #                     time = (int(img_valid_id) - int(img_id_list[0])) / 90.
-                    #                     if int(img_valid_id) - int(img_valid_id_list[start+i-1]) == 3:
-                    #                         item = (int(cap_id), ges_index, pair_id, img_valid_id, time)
-                    #                         self.samples.append(item)
             pool.close()
             pool.join()
+            sample_keys = list(samples.keys())
+            if self.config['exper']['supervision']:
+                for cap_id in sample_keys:
+                    if int(cap_id) not in self.data_config['super_ids']:
+                        samples.pop(cap_id)
             cap_id_list = list(samples.keys())
             cap_id_list.sort()
             for cap_id in cap_id_list:
                 self.samples += samples[cap_id]
                 self.bbox_inter[cap_id] = bbox_inter_f[cap_id]
+            if is_main_process():
+                print('All the sequences for Interhand: number: {} \nitems: {}'.format(len(samples.keys()),
+                                                                                         samples.keys()))
+
 
     def get_camera_params(self, cap_id, cam_id, is_event=True):
         cam_param = self.data['cam'][cap_id]
@@ -267,7 +251,12 @@ class Interhand(Dataset):
                 # self.data[seq_id]['event'][:, 3],
                 timestamp
             )
-            index_l = max(0, index_r - self.config['exper']['preprocess']['num_window'])
+            if not self.config['exper']['run_eval_only']:
+                num = (np.random.rand(1) - 0.5) * 2 * self.config['exper']['preprocess']['num_var'] + \
+                      self.config['exper']['preprocess']['num_window']
+            else:
+                num = self.config['exper']['preprocess']['num_window']
+            index_l = max(0, index_r - int(num))
         return index_l, index_r
 
     def get_indices_from_timestamps(self, timestamps, event):
@@ -291,13 +280,15 @@ class Interhand(Dataset):
 
     def get_event_repre(self, event, indices):
         if indices[0] == 0 or indices[-1] >= event.shape[0] - 1 or indices[-1]==indices[0]:
-            return torch.zeros((2, 260, 346))
+            return torch.zeros((260, 346, 3))
         else:
             tmp_events = event[indices[0]:indices[1]].copy()
             tmp_events[:, 3] = (tmp_events[:, 3] - event[indices[0], 3]) / (event[indices[1], 3] - event[indices[0], 3])
             tmp_events = torch.tensor(tmp_events, dtype=torch.float32)
             ev_frame = event_representations(tmp_events, repre=self.config['exper']['preprocess']['ev_repre'], hw=(260, 346))
-            return ev_frame
+            if ev_frame.shape[0] == 2:
+                ev_frame = torch.cat([ev_frame, torch.zeros((1, 260, 346))], dim=0)
+            return ev_frame.permute(1, 2, 0)
 
     def get_augment_param(self):
         if not self.config['exper']['run_eval_only']:
@@ -445,59 +436,59 @@ class Interhand(Dataset):
         frame_resize = cv2.resize(np.array(frame_crop), (size, size), interpolation=cv2.INTER_AREA)
         return lf_top, scale, frame_resize
 
-    def change_camera_view(self, meta_data):
-        if self.config['exper']['preprocess']['cam_view'] == 'world':
-            return self.get_transform(torch.eye(3, dtype=torch.float32), torch.zeros(3, dtype=torch.float32))
-        elif self.config['exper']['preprocess']['cam_view'] == 'rgb':
-            tf_rgb_w = self.get_transform(meta_data['R_rgb'], meta_data['t_rgb'])
-            for mano_key in ['mano', 'mano_rgb']:
-                if mano_key in meta_data.keys():
-                    R_wm = roma.rotvec_to_rotmat(meta_data[mano_key]['rot_pose'])
-                    t_wm = meta_data[mano_key]['trans']
-                    tf_wm = self.get_transform(R_wm, t_wm + meta_data[mano_key]['root_joint'])
-                    tf_rgb_m = tf_rgb_w @ tf_wm
-                    meta_data[mano_key]['rot_pose'] = roma.rotmat_to_rotvec(tf_rgb_m[:3, :3])
-                    meta_data[mano_key]['trans'] = tf_rgb_m[:3, 3] - meta_data[mano_key]['root_joint']
-            for joints_key in ['3d_joints', '3d_joints_rgb']:
-                if joints_key in meta_data.keys():
-                    joints_new = (tf_rgb_w[:3, :3] @ (meta_data[joints_key].transpose(0, 1))\
-                                  + tf_rgb_w[:3, 3:4]).transpose(0, 1)
-                    meta_data[joints_key] = joints_new
-            for event_cam in ['event_l', 'event_r']:
-                tf_e_w = self.get_transform(meta_data['R_'+event_cam], meta_data['t_'+event_cam])
-                tf_e_rgb = tf_e_w @ tf_rgb_w.inverse()
-                meta_data['R_' + event_cam] = tf_e_rgb[:3, :3]
-                meta_data['t_' + event_cam] = tf_e_rgb[:3, 3]
-            meta_data['R_rgb'] = torch.eye(3, dtype=torch.float32)
-            meta_data['t_rgb'] = torch.zeros(3, dtype=torch.float32)
-            return tf_rgb_w.inverse()
-        elif self.config['exper']['preprocess']['cam_view'] == 'event':
-            tf_event_w = self.get_transform(meta_data['R_event_l'], meta_data['t_event_l'])
-            for mano_key in ['mano', 'mano_rgb']:
-                if mano_key in meta_data.keys():
-                    R_wm = roma.rotvec_to_rotmat(meta_data[mano_key]['rot_pose'])
-                    t_wm = meta_data[mano_key]['trans']
-                    tf_wm = self.get_transform(R_wm, t_wm + meta_data[mano_key]['root_joint'])
-                    tf_event_m = tf_event_w @ tf_wm
-                    meta_data[mano_key]['rot_pose'] = roma.rotmat_to_rotvec(tf_event_m[:3, :3])
-                    meta_data[mano_key]['trans'] = tf_event_m[:3, 3] - meta_data[mano_key]['root_joint']
-            for joints_key in ['3d_joints', '3d_joints_rgb']:
-                if joints_key in meta_data.keys():
-                    joints_new = (tf_event_w[:3, :3] @ (meta_data[joints_key].transpose(0, 1))\
-                                  + tf_event_w[:3, 3:4]).transpose(0, 1)
-                    meta_data[joints_key] = joints_new
-            for rgb_cam in ['rgb']:
-                tf_rgb_w = self.get_transform(meta_data['R_'+rgb_cam], meta_data['t_'+rgb_cam])
-                tf_rgb_e = tf_rgb_w @ tf_event_w.inverse()
-                meta_data['R_' + rgb_cam] = tf_rgb_e[:3, :3]
-                meta_data['t_' + rgb_cam] = tf_rgb_e[:3, 3]
-            meta_data['R_event_l'] = torch.eye(3, dtype=torch.float32)
-            meta_data['t_event_l'] = torch.zeros(3, dtype=torch.float32)
-            meta_data['R_event_r'] = torch.eye(3, dtype=torch.float32)
-            meta_data['t_event_r'] = torch.zeros(3, dtype=torch.float32)
-            return tf_event_w.inverse()
-        else:
-            raise NotImplementedError('no implemention for change camera view!')
+    # def change_camera_view(self, meta_data):
+    #     if self.config['exper']['preprocess']['cam_view'] == 'world':
+    #         return self.get_transform(torch.eye(3, dtype=torch.float32), torch.zeros(3, dtype=torch.float32))
+    #     elif self.config['exper']['preprocess']['cam_view'] == 'rgb':
+    #         tf_rgb_w = self.get_transform(meta_data['R_rgb'], meta_data['t_rgb'])
+    #         for mano_key in ['mano', 'mano_rgb']:
+    #             if mano_key in meta_data.keys():
+    #                 R_wm = roma.rotvec_to_rotmat(meta_data[mano_key]['rot_pose'])
+    #                 t_wm = meta_data[mano_key]['trans']
+    #                 tf_wm = self.get_transform(R_wm, t_wm + meta_data[mano_key]['root_joint'])
+    #                 tf_rgb_m = tf_rgb_w @ tf_wm
+    #                 meta_data[mano_key]['rot_pose'] = roma.rotmat_to_rotvec(tf_rgb_m[:3, :3])
+    #                 meta_data[mano_key]['trans'] = tf_rgb_m[:3, 3] - meta_data[mano_key]['root_joint']
+    #         for joints_key in ['3d_joints', '3d_joints_rgb']:
+    #             if joints_key in meta_data.keys():
+    #                 joints_new = (tf_rgb_w[:3, :3] @ (meta_data[joints_key].transpose(0, 1))\
+    #                               + tf_rgb_w[:3, 3:4]).transpose(0, 1)
+    #                 meta_data[joints_key] = joints_new
+    #         for event_cam in ['event_l', 'event_r']:
+    #             tf_e_w = self.get_transform(meta_data['R_'+event_cam], meta_data['t_'+event_cam])
+    #             tf_e_rgb = tf_e_w @ tf_rgb_w.inverse()
+    #             meta_data['R_' + event_cam] = tf_e_rgb[:3, :3]
+    #             meta_data['t_' + event_cam] = tf_e_rgb[:3, 3]
+    #         meta_data['R_rgb'] = torch.eye(3, dtype=torch.float32)
+    #         meta_data['t_rgb'] = torch.zeros(3, dtype=torch.float32)
+    #         return tf_rgb_w.inverse()
+    #     elif self.config['exper']['preprocess']['cam_view'] == 'event':
+    #         tf_event_w = self.get_transform(meta_data['R_event_l'], meta_data['t_event_l'])
+    #         for mano_key in ['mano', 'mano_rgb']:
+    #             if mano_key in meta_data.keys():
+    #                 R_wm = roma.rotvec_to_rotmat(meta_data[mano_key]['rot_pose'])
+    #                 t_wm = meta_data[mano_key]['trans']
+    #                 tf_wm = self.get_transform(R_wm, t_wm + meta_data[mano_key]['root_joint'])
+    #                 tf_event_m = tf_event_w @ tf_wm
+    #                 meta_data[mano_key]['rot_pose'] = roma.rotmat_to_rotvec(tf_event_m[:3, :3])
+    #                 meta_data[mano_key]['trans'] = tf_event_m[:3, 3] - meta_data[mano_key]['root_joint']
+    #         for joints_key in ['3d_joints', '3d_joints_rgb']:
+    #             if joints_key in meta_data.keys():
+    #                 joints_new = (tf_event_w[:3, :3] @ (meta_data[joints_key].transpose(0, 1))\
+    #                               + tf_event_w[:3, 3:4]).transpose(0, 1)
+    #                 meta_data[joints_key] = joints_new
+    #         for rgb_cam in ['rgb']:
+    #             tf_rgb_w = self.get_transform(meta_data['R_'+rgb_cam], meta_data['t_'+rgb_cam])
+    #             tf_rgb_e = tf_rgb_w @ tf_event_w.inverse()
+    #             meta_data['R_' + rgb_cam] = tf_rgb_e[:3, :3]
+    #             meta_data['t_' + rgb_cam] = tf_rgb_e[:3, 3]
+    #         meta_data['R_event_l'] = torch.eye(3, dtype=torch.float32)
+    #         meta_data['t_event_l'] = torch.zeros(3, dtype=torch.float32)
+    #         meta_data['R_event_r'] = torch.eye(3, dtype=torch.float32)
+    #         meta_data['t_event_r'] = torch.zeros(3, dtype=torch.float32)
+    #         return tf_event_w.inverse()
+    #     else:
+    #         raise NotImplementedError('no implemention for change camera view!')
 
     def valid_bbox(self, bbox, hw=[260, 346]):
         if (bbox[:2] < 0).any() or bbox[0] > hw[1] or bbox[1] > hw[0] or bbox[2] < 10 or bbox[2] > 400:
@@ -657,7 +648,6 @@ class Interhand(Dataset):
                 indices_ev = self.get_indices_from_timestamps([t_l, t_r], events)
                 # print('segment', segment, indices_ev)
                 ev_frame = self.get_event_repre(events, indices_ev)
-                ev_frame = torch.cat([ev_frame.permute(1, 2, 0), torch.zeros((260, 346, 1))], dim=2)
                 ev_frames.append(ev_frame)
 
             if step == 0:
@@ -772,8 +762,16 @@ class Interhand(Dataset):
             frames_output.append(frames)
             meta_data_output.append(meta_data)
             img_id = str(int(img_id) + 3)
+        supervision_type = 0
+        if not self.config['exper']['run_eval_only']:
+            if int(cap_id) not in self.data_config['super_ids']:
+                if self.config['exper']['use_gt']:
+                    supervision_type = 1
+                else:
+                    supervision_type = 2
         for i in range(len(meta_data_output)):
             meta_data_output[i]['bbox_valid'] = bbox_valid
+            meta_data_output[i]['supervision_type'] = supervision_type
         return frames_output, meta_data_output
 
     def __len__(self):

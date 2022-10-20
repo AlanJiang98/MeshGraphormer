@@ -210,7 +210,7 @@ from src.datasets.Interhand import Interhand
 
 def get_config():
     parser = argparse.ArgumentParser('Training')
-    parser.add_argument('--config', type=str, default='src/configs/train_fastmetro_perceiver_evreal.yaml')
+    parser.add_argument('--config', type=str, default='src/configs/train_perceiver_super.yaml')
     parser.add_argument('--config_merge', type=str, default='')
     parser.add_argument('--output_dir', type=str,
                         default='./output')
@@ -230,7 +230,7 @@ def get_config():
 
 config = get_config()
 
-# a = Interhand(config)
+#a = Interhand(config)
 a = EvRealHands(config)
 d = a[100]
 c = a[80]
