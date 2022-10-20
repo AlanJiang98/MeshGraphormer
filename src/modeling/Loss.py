@@ -217,7 +217,7 @@ class Loss(torch.nn.Module):
                 K_event[:, :2] *= meta_data[step]['sc_evs'][-1][super_2d_valid]
 
                 event_cameras = cameras_from_opencv_projection(
-                    R=torch.eye(3).repeat(batch_size, 1, 1).to(device),
+                    R=R_event,
                     tvec=torch.zeros(batch_size, 3).to(device),
                     camera_matrix=K_event,
                     image_size=torch.tensor([self.config['exper']['bbox']['event']['size'],
