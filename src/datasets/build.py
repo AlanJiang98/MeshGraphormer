@@ -81,8 +81,14 @@ def build_hand_dataset(config, is_train=True):
     if 'freihand1' in config['data']['dataset']:
         pass
     if 'interhand' in config['data']['dataset']:
+        if is_main_process():
+            print(50*'*')
+            print('start to load interhand!')
         datasets.append(Interhand(config))
     if 'evrealhands' in config['data']['dataset']:
+        if is_main_process():
+            print(50*'*')
+            print('start to load evrealhands!')
         datasets.append(EvRealHands(config))
     return ConcatDataset(datasets)
 
@@ -100,6 +106,7 @@ def make_hand_data_loader(config, start_iter=0):
         iters_per_batch = len(dataset) // images_per_batch
         num_iters = iters_per_batch * config['exper']['num_train_epochs']
         if is_main_process():
+            print(50*'*')
             print("Train with {} images per GPU.".format(images_per_gpu))
             print("Total batch size {}".format(images_per_batch))
             print("Total training steps {}".format(num_iters))

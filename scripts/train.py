@@ -468,6 +468,8 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
 
                     pred_3d_joints = preds[step][-1]['pred_3d_joints']
                     pred_3d_joints_abs = pred_3d_joints + meta_data[step]['3d_joints'][:, :1]
+                    pred_3d_joints_abs = torch.bmm(meta_data[step]['R_event'].reshape(-1, 3, 3), pred_3d_joints_abs.transpose(2, 1)).transpose(2, 1) + meta_data[step]['t_event'].reshape(-1, 1, 3)
+                    # todo check here!!
                     pred_2d_joints = torch.bmm(meta_data[step]['K_event'], pred_3d_joints_abs.permute(0, 2, 1)).permute(0, 2, 1)
                     pred_2d_joints = pred_2d_joints[:, :, :2] / pred_2d_joints[:, :, 2:]
                     gt_2d_joints = meta_data[step]['2d_joints_event']

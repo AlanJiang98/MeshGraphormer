@@ -32,12 +32,12 @@ from pytorch3d.renderer import (
 from pytorch3d.utils import cameras_from_opencv_projection
 
 
-def collect_data(data):
-    global samples, bbox_inter_f
-    for key in data[0].keys():
-        samples[key] = data[0][key]
-    for key in data[1].keys():
-        bbox_inter_f[key] = data[1][key]
+# def collect_data(data):
+#     global samples, bbox_inter_f
+#     for key in data[0].keys():
+#         samples[key] = data[0][key]
+#     for key in data[1].keys():
+#         bbox_inter_f[key] = data[1][key]
 
 
 class Interhand(Dataset):
@@ -53,6 +53,8 @@ class Interhand(Dataset):
                                             not self.config['exper']['run_eval_only'])
         self.normalize_img = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                                   std=[0.229, 0.224, 0.225])
+        if is_main_process():
+            print('Interhand length is ', self.__len__())
 
     def load_annotations(self):
         if self.config['exper']['run_eval_only']:
@@ -86,6 +88,8 @@ class Interhand(Dataset):
 
     @staticmethod
     def get_samples_per_cap(data, config, data_config, ges_list, cap_id):
+        if is_main_process():
+            print('Process cap {} start!'.format(cap_id))
         cap_ev_dir = osp.join(config['data']['dataset_info']['interhand']['data_dir'], data_config['event_dir'], 'Capture' + cap_id)
         ges_list_ = os.listdir(cap_ev_dir)
         ges_list_.sort()
@@ -98,6 +102,8 @@ class Interhand(Dataset):
                     if osp.exists(osp.join(cap_ev_dir, ges, 'cam' + cam_pair[0], 'events.npz')):
                         img_dir_ = osp.join(config['data']['dataset_info']['interhand']['data_dir'], data_config['img_dir'], \
                                             'Capture' + cap_id, ges, 'cam' + cam_pair[1])
+                        if not osp.exists(img_dir_):
+                            continue
                         img_name_list = os.listdir(img_dir_)
                         img_name_list.sort()
                         img_id_list = [img_name[5:-4] for img_name in img_name_list]
@@ -130,7 +136,8 @@ class Interhand(Dataset):
                             joint3d_ = np.array(valid_joint3d, dtype=np.float32)[:, indices_change(0, 1)] / 1000.
                             bbox_inter_f_ = interp1d(id_time, joint3d_, axis=0, kind='cubic')
                             bbox_inter_f_cap[ges] = bbox_inter_f_
-
+        if is_main_process():
+            print('Process cap {} over!'.format(cap_id))
         return [{cap_id: samples}, {cap_id: bbox_inter_f_cap}]
 
     def process_samples(self):
@@ -139,40 +146,47 @@ class Interhand(Dataset):
         valid_cap_ids = os.listdir(osp.join(self.config['data']['dataset_info']['interhand']['data_dir'], self.data_config['event_dir']))
         valid_cap_ids.sort()
         if self.config['exper']['debug']:
-            data_ = self.get_samples_per_cap(self.data, self.config, self.data_config, self.ges_list, valid_cap_ids[0][7:])
-            self.samples += data_[0][valid_cap_ids[0][7:]]
-            self.bbox_inter[valid_cap_ids[0][7:]] = data_[1][valid_cap_ids[0][7:]]
+            cap_id = '1'
+            data_ = self.get_samples_per_cap(self.data, self.config, self.data_config, self.ges_list, cap_id)
+            self.samples += data_[0][cap_id]
+            self.bbox_inter[cap_id] = data_[1][cap_id]
         else:
-            global samples, bbox_inter_f
+            # global samples, bbox_inter_f
             samples = {}
             bbox_inter_f = {}
-            pool = mp.Pool(mp.cpu_count())
+            # pool = mp.Pool(mp.cpu_count())
+            # for cap_id in self.data_config['cap_ids']:
+            #     if 'Capture'+str(cap_id) in valid_cap_ids:
+            #         cap_id = str(cap_id)
+            #         pool.apply_async(
+            #             Interhand.get_samples_per_cap,
+            #             args=(
+            #                 self.data, copy.deepcopy(self.config), copy.deepcopy(self.data_config), copy.deepcopy(self.ges_list), cap_id,
+            #             ),
+            #             callback=collect_data
+            #         )
+            # pool.close()
+            # pool.join()
             for cap_id in self.data_config['cap_ids']:
                 if 'Capture'+str(cap_id) in valid_cap_ids:
                     cap_id = str(cap_id)
-                    pool.apply_async(
-                        Interhand.get_samples_per_cap,
-                        args=(
-                            self.data, copy.deepcopy(self.config), copy.deepcopy(self.data_config), copy.deepcopy(self.ges_list), cap_id,
-                        ),
-                        callback=collect_data
-                    )
-            pool.close()
-            pool.join()
-            sample_keys = list(samples.keys())
-            if self.config['exper']['supervision']:
-                for cap_id in sample_keys:
-                    if int(cap_id) not in self.data_config['super_ids']:
-                        samples.pop(cap_id)
-            cap_id_list = list(samples.keys())
-            cap_id_list.sort()
-            for cap_id in cap_id_list:
-                self.samples += samples[cap_id]
-                self.bbox_inter[cap_id] = bbox_inter_f[cap_id]
+                    if self.config['exper']['supervision'] and int(cap_id) not in self.data_config['super_ids']:
+                        continue
+                    data_ = self.get_samples_per_cap(self.data, self.config, self.data_config, self.ges_list, cap_id)
+                    self.samples += data_[0][cap_id]
+                    self.bbox_inter[cap_id] = data_[1][cap_id]
+            # sample_keys = list(samples.keys())
+            # if self.config['exper']['supervision']:
+            #     for cap_id in sample_keys:
+            #         if int(cap_id) not in self.data_config['super_ids']:
+            #             samples.pop(cap_id)
+            # cap_id_list = list(samples.keys())
+            # cap_id_list.sort()
+            # for cap_id in cap_id_list:
+            #     self.samples += samples[cap_id]
+            #     self.bbox_inter[cap_id] = bbox_inter_f[cap_id]
             if is_main_process():
-                print('All the sequences for Interhand: number: {} \nitems: {}'.format(len(samples.keys()),
-                                                                                         samples.keys()))
-
+                print('All the sequences for Interhand items: {}'.format(len(self.samples)))
 
     def get_camera_params(self, cap_id, cam_id, is_event=True):
         cam_param = self.data['cam'][cap_id]

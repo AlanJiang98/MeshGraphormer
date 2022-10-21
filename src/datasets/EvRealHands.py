@@ -52,6 +52,8 @@ class EvRealHands(Dataset):
         self.get_bbox_inter_f()
         self.normalize_img = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                                   std=[0.229, 0.224, 0.225])
+        if is_main_process():
+            print('EvRealHands length is ', self.__len__())
         pass
 
     @staticmethod
@@ -125,7 +127,7 @@ class EvRealHands(Dataset):
             if self.config['exper']['run_eval_only']:
                 seq_ids = ['53', '4']
             else:
-                seq_ids = ['24', '18']
+                seq_ids = ['41', '18']#['24', '18']
             for seq_id in seq_ids:
                 data = self.get_events_annotations_per_sequence(osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id),
                                                             not self.config['exper']['run_eval_only'], self.config['eval']['fast'])
@@ -149,7 +151,7 @@ class EvRealHands(Dataset):
                 if not self.data[id]['annot']['annoted']:
                     self.data.pop(id)
         if is_main_process():
-            print('All the sequences for EvRealHands: number: {} \nitems: {}'.format(len(self.data.keys()), self.data.keys()))
+            print('All the sequences for EvRealHands: number: {} items: {}'.format(len(self.data.keys()), len(self.data.keys())))
 
     def process_samples(self):
         '''
@@ -749,9 +751,6 @@ class EvRealHands(Dataset):
 
             tf_w_c = self.change_camera_view(meta_data)
 
-            # self.plotshow(rgb_crop)
-            # self.plotshow(ev_frames_crop[-1])
-
             meta_data.update({
                 'lt_rgb': lt_rgb,
                 'sc_rgb': sc_rgb,
@@ -783,7 +782,7 @@ class EvRealHands(Dataset):
             annot_id = str(int(annot_id) + 1)
         supervision_type = 0
         if not self.config['exper']['run_eval_only']:
-            if self.data[seq_id]['annot']['annoted']:
+            if not self.data[seq_id]['annot']['annoted']:
                 if self.config['exper']['use_gt']:
                     supervision_type = 1
                 else:
