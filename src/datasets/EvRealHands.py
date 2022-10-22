@@ -83,6 +83,7 @@ class EvRealHands(Dataset):
         # mano_ids_np = np.array(mano_ids, dtype=np.int32)
         # indices = np.diff(mano_ids_np) == 1
         # annot['sample_ids'] = [str(id) for id in mano_ids_np[1:][indices]]
+        mano_ids = mano_ids[20:-5]
         annot['sample_ids'] = [str(id) for id in mano_ids]
         K_old = np.array(annot['camera_info']['event']['K_old'])
         K_new = np.array(annot['camera_info']['event']['K_new'])
@@ -145,11 +146,12 @@ class EvRealHands(Dataset):
             pool.close()
             pool.join()
             self.data = data_seqs
-        if self.config['exper']['supervision'] and not self.config['exper']['run_eval_only']:
-            ids = list(self.data.keys())
-            for id in ids:
-                if not self.data[id]['annot']['annoted']:
-                    self.data.pop(id)
+        # todo
+        # if self.config['exper']['supervision'] and not self.config['exper']['run_eval_only']:
+        #     ids = list(self.data.keys())
+        #     for id in ids:
+        #         if not self.data[id]['annot']['annoted']:
+        #             self.data.pop(id)
         if is_main_process():
             print('All the sequences for EvRealHands: number: {} items: {}'.format(len(self.data.keys()), len(self.data.keys())))
 
@@ -630,7 +632,7 @@ class EvRealHands(Dataset):
         bbox_valid = True
 
         if test_fast:
-            steps = 2
+            steps = min(2, self.config['exper']['preprocess']['steps'])
         else:
             steps = self.config['exper']['preprocess']['steps']
 
@@ -748,6 +750,9 @@ class EvRealHands(Dataset):
                 lt_evs.append(lt_ev)
                 sc_evs.append(sc_ev)
                 ev_frames_crop.append(torch.tensor(ev_frame_crop, dtype=torch.float32))
+
+
+            # self.plotshow(ev_frames_crop[-1])
 
             tf_w_c = self.change_camera_view(meta_data)
 

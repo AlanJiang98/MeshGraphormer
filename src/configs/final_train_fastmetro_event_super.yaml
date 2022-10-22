@@ -7,7 +7,7 @@ model:
   bert_config: 'src/modeling/bert/bert-base-uncased/'
   method:
     framework: 'encoder_decoder_based' #'encoder_decoder_based' # 'encoder_decoder_based'
-    ere_usage: [False, True, False]
+    ere_usage: [True, False, False]
   tfm:
     scale: 'L' # 'S', 'M', 'L'
     model_dim: [512, 128]
@@ -17,7 +17,7 @@ model:
     n_self_att_layers: 2
     iterations: 1
     perceiver_layers: 2
-    decoder_features: [False, True, False]
+    decoder_features: [True, False, False]
     output_attentions: True
     drop_out: 0.1
     mesh_type: 'hand'
@@ -38,9 +38,9 @@ exper:
   debug: False
   run_eval_only: False
   resume_checkpoint: None
-  num_workers: 4
+  num_workers: 8
   output_dir: './output'
-  per_gpu_batch_size: 64
+  per_gpu_batch_size: 84
   lr: 0.0001
   num_train_epochs: 200
   device: 'cuda'
@@ -54,7 +54,7 @@ exper:
     event_range: 'num' # 'time'
     num_window: 5000
     num_var: 2000
-    cam_view: 'rgb' # 'world', 'rgb', 'event
+    cam_view: 'event' # 'world', 'rgb', 'event
     steps: 1
     segments: 1
   augment:
@@ -66,12 +66,12 @@ exper:
       colorjitter:
         p: 0.15
         brightness:
-          thre: [0.6, 5.]
+          thre: [0.6, 4.]
       gauss:
         var: [0.1, 0.2]
         p: 0.5
       gaussianblur:
-        p: 0.1
+        p: 0.15
         kernel_size: 19
         sigma: [4, 8]
       salt_pepper:
@@ -83,14 +83,14 @@ exper:
         brightness:
           thre: [0.6, 5.]
       gauss:
-        var: [0.05, 0.1]
-        p: 0.2
+        var: [0.05, 0.15]
+        p: 0.8
       gaussianblur:
         p: 0.0
         kernel_size: 31
         sigma: [0.1, 0.3]
       salt_pepper:
-        p: 0.1
+        p: 0.15
         rate: 0.1
   bbox:
     rate: 1.5

@@ -228,6 +228,20 @@ def print_metrics(errors, metric='MPJPE', f=None):
     else:
         f.write('{} all is {}'.format(metric, mpjpe_all) + '\n')
 
+def print_sequence_error(mpjpe_eachjoint_eachitem, metric, seq_type, dir):
+    x = np.arange(0, mpjpe_eachjoint_eachitem.shape[0])
+    mpjpe_pre = torch.mean(mpjpe_eachjoint_eachitem, dim=1).detach().cpu().numpy() / 1000.
+    plt.plot(x, mpjpe_pre, label=metric)
+    plt.plot(x, mpjpe_pre * 0., label='zero')
+    plt.xlabel('item')
+    plt.ylabel('m')
+    plt.title(seq_type)
+    plt.legend()
+    f_t = plt.gcf()
+    mkdir(dir)
+    f_t.savefig(os.path.join(dir, '{}_{}.png'.format(seq_type, metric)))
+    f_t.clear()
+
 
 def print_items(mpjpe_errors_list, labels_list, metric, file):
     mpjpe_errors = {}
@@ -237,6 +251,7 @@ def print_items(mpjpe_errors_list, labels_list, metric, file):
                 {key: torch.stack(mpjpe_errors_list[i])}
             )
     print_metrics(mpjpe_errors, metric=metric, f=file)
+
 
 def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBStereo_model, _loss):
     mano_layer = MANO(config['data']['smplx_path'], use_pca=False, is_rhand=True).cuda()
@@ -333,8 +348,8 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
                 pa_error_vertices = torch.mean(torch.abs(aligned_pred_vertices - gt_vertices_sub.detach().cpu()), dim=(1, 2))
                 update_errors_list(errors_list[3][step], pa_error_vertices[mano_valid], meta_data[step]['seq_type'][mano_valid])
 
-            if iteration*config['exper']['per_gpu_batch_size'] % 20 != 0:
-                continue
+            # if iteration*config['exper']['per_gpu_batch_size'] % 20 != 0:
+            #     continue
             if config['eval']['output']['save']:
                 predicted_meshes = preds['pred_vertices_l'] + meta_data['3d_joints_rgb'][:, :1]
                 # for i in range(rgb.shape[0]):
@@ -447,38 +462,37 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
         '''
         for fast sequences
         '''
-        if steps > 1:
-            for iteration, (frames, meta_data) in enumerate(val_dataloader_fast):
+        for iteration, (frames, meta_data) in enumerate(val_dataloader_fast):
 
-                if last_seq != str(meta_data[0]['seq_id'][0].item()):
-                    last_seq = str(meta_data[0]['seq_id'][0].item())
-                    print('Now for seq id: ', last_seq)
+            if last_seq != str(meta_data[0]['seq_id'][0].item()):
+                last_seq = str(meta_data[0]['seq_id'][0].item())
+                print('Now for seq id: ', last_seq)
 
-                device = 'cuda'
-                batch_size = frames[0]['rgb'].shape[0]
-                frames = to_device(frames, device)
-                meta_data = to_device(meta_data, device)
+            device = 'cuda'
+            batch_size = frames[0]['rgb'].shape[0]
+            frames = to_device(frames, device)
+            meta_data = to_device(meta_data, device)
 
-                preds, atts = EvRGBStereo_model(frames, return_att=True, decode_all=False)
-                batch_time.update(time.time() - end)
-                end = time.time()
-                steps = len(frames)
-                for step in range(steps):
-                    joints_2d_valid = meta_data[step]['joints_2d_valid_ev'] * meta_data[step]['bbox_valid']
+            preds, atts = EvRGBStereo_model(frames, return_att=True, decode_all=False)
+            batch_time.update(time.time() - end)
+            end = time.time()
+            steps = len(preds)
+            for step in range(steps):
+                joints_2d_valid = meta_data[step]['joints_2d_valid_ev'] * meta_data[step]['bbox_valid']
 
-                    pred_3d_joints = preds[step][-1]['pred_3d_joints']
-                    pred_3d_joints_abs = pred_3d_joints + meta_data[step]['3d_joints'][:, :1]
-                    pred_3d_joints_abs = torch.bmm(meta_data[step]['R_event'].reshape(-1, 3, 3), pred_3d_joints_abs.transpose(2, 1)).transpose(2, 1) + meta_data[step]['t_event'].reshape(-1, 1, 3)
-                    # todo check here!!
-                    pred_2d_joints = torch.bmm(meta_data[step]['K_event'], pred_3d_joints_abs.permute(0, 2, 1)).permute(0, 2, 1)
-                    pred_2d_joints = pred_2d_joints[:, :, :2] / pred_2d_joints[:, :, 2:]
-                    gt_2d_joints = meta_data[step]['2d_joints_event']
-                    pred_2d_joints_aligned = pred_2d_joints - pred_2d_joints[:, :1] + gt_2d_joints[:, :1]
-                    # print('fast index', fast_index)
-                    mpjpe_eachjoint_eachitem = torch.sqrt(torch.sum((pred_2d_joints_aligned - gt_2d_joints) ** 2, dim=-1))
-                    # print('mpjpe shape', mpjpe_eachjoint_eachitem.shape)
-                    # print('seq type shape', meta_data['seq_type'][fast_index])
-                    update_errors_list(errors_list[0][step], mpjpe_eachjoint_eachitem[joints_2d_valid], meta_data[step]['seq_type'][joints_2d_valid])
+                pred_3d_joints = preds[step][-1]['pred_3d_joints']
+                pred_3d_joints_abs = pred_3d_joints + meta_data[step]['3d_joints'][:, :1]
+                pred_3d_joints_abs = torch.bmm(meta_data[step]['R_event'].reshape(-1, 3, 3), pred_3d_joints_abs.transpose(2, 1)).transpose(2, 1) + meta_data[step]['t_event'].reshape(-1, 1, 3)
+                # todo check here!!
+                pred_2d_joints = torch.bmm(meta_data[step]['K_event'], pred_3d_joints_abs.permute(0, 2, 1)).permute(0, 2, 1)
+                pred_2d_joints = pred_2d_joints[:, :, :2] / pred_2d_joints[:, :, 2:]
+                gt_2d_joints = meta_data[step]['2d_joints_event']
+                pred_2d_joints_aligned = pred_2d_joints - pred_2d_joints[:, :1] + gt_2d_joints[:, :1]
+                # print('fast index', fast_index)
+                mpjpe_eachjoint_eachitem = torch.sqrt(torch.sum((pred_2d_joints_aligned - gt_2d_joints) ** 2, dim=-1))
+                # print('mpjpe shape', mpjpe_eachjoint_eachitem.shape)
+                # print('seq type shape', meta_data['seq_type'][fast_index])
+                update_errors_list(errors_list[0][step], mpjpe_eachjoint_eachitem[joints_2d_valid], meta_data[step]['seq_type'][joints_2d_valid])
 
     for step in range(steps):
         file.write('Step: {}'.format(step) + '\n')
@@ -487,6 +501,11 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
             file.write('\n')
         file.write('\n\n')
 
+    for step in range(steps):
+        for i, key in enumerate(labels_list):
+            if len(errors_list[0][step][i]) != 0:
+                errors_seq = torch.stack(errors_list[0][step][i])
+                print_sequence_error(errors_seq, metrics[0], labels_list[i]+'_step'+str(step), os.path.join(config['exper']['output_dir'], 'seq_errors'))
 
     # if config['eval']['output']['save']:
     #     if config['eval']['output']['errors']:
