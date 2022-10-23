@@ -351,7 +351,7 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
             # if iteration*config['exper']['per_gpu_batch_size'] % 20 != 0:
             #     continue
             if config['eval']['output']['save']:
-                predicted_meshes = preds['pred_vertices_l'] + meta_data['3d_joints_rgb'][:, :1]
+                predicted_meshes = preds[0][-1]['pred_vertices'] + meta_data[0]['3d_joints'][:, :1]
                 # for i in range(rgb.shape[0]):
                 #     seq_dir = op.join(config['exper']['output_dir'], str(meta_data['seq_id'][i].item()))
                 #     mkdir(seq_dir)
@@ -425,27 +425,32 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
                 #         # todo draw attention map
                 #         pass
                 #
-                # if config['eval']['output']['rendered']:
-                #     key = config['eval']['output']['vis_rendered']
-                #     if key == 'rgb':
-                #         img_bg = frames[key+'_ori']/255.
-                #         hw = config['data']['rgb_hw']
-                #     else:
-                #         img_bg = frames[key + '_ori']
-                #         hw = config['data']['event_hw']
-                #     img_render = render.visualize(
-                #         K=meta_data['K_'+key].detach(),
-                #         R=meta_data['R_'+key].detach(),
-                #         t=meta_data['t_'+key].detach(),
-                #         hw=hw,
-                #         img_bg=img_bg,
-                #         vertices=predicted_meshes.detach(),
-                #     )
-                #     for i in range(img_render.shape[0]):
-                #         img_dir = op.join(config['exper']['output_dir'], str(meta_data['seq_id'][i].item()), 'rendered')
-                #         mkdir(img_dir)
-                #         imageio.imwrite(op.join(img_dir, '{}.jpg'.format(meta_data['annot_id'][i].item())),
-                #                         (img_render[i].detach().cpu().numpy() * 255).astype(np.uint8))
+                if config['eval']['output']['rendered']:
+                    key = config['eval']['output']['vis_rendered']
+                    if key == 'rgb':
+                        img_bg = frames[0][key+'_ori']
+                        _, h, w, _ = img_bg.shape
+                        hw = [h, w]
+                    else:
+                        img_bg = frames[0][key + '_ori'][-1]
+                        _, h, w, _ = img_bg.shape
+                        hw = [h, w]
+                    # print(meta_data[0]['K_'+key].device)
+                    # print(img_bg.device)
+                    # print(predicted_meshes.device)
+                    img_render = render.visualize(
+                        K=meta_data[0]['K_'+key].detach(),
+                        R=meta_data[0]['R_'+key].detach(),
+                        t=meta_data[0]['t_'+key].detach(),
+                        hw=hw,
+                        img_bg=img_bg.cpu(),
+                        vertices=predicted_meshes.detach(),
+                    )
+                    for i in range(img_render.shape[0]):
+                        img_dir = op.join(config['exper']['output_dir'], str(meta_data[0]['seq_id'][i].item()), 'rendered')
+                        mkdir(img_dir)
+                        imageio.imwrite(op.join(img_dir, '{}.jpg'.format(meta_data[0]['annot_id'][i].item())),
+                                        (img_render[i].detach().cpu().numpy() * 255).astype(np.uint8))
 
             if (iteration - 1) % config['utils']['logging_steps'] == 0:
                 eta_seconds = batch_time.avg * (len(val_dataloader_normal) / config['exper']['per_gpu_batch_size'] - iteration)

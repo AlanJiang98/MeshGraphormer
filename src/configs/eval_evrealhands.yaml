@@ -15,12 +15,12 @@ eval:
   fast_window: 5000
   multiscale: False
   output:
-    save: False
+    save: True
     mesh: True
     attention_map: True
     errors: True
     rendered: True
-    vis_rendered: 'rgb'
+    vis_rendered: 'event'
   augment:
     scale: 1.0
     rot: 0.0

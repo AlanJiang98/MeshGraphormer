@@ -1,13 +1,13 @@
 data:
   dataset_yaml: '/userhome/alanjjp/Project/MeshGraphormer/src/datasets/dataset.yaml'
-  dataset: ['interhand', 'evrealhands']
+  dataset: ['evrealhands']
   smplx_path: '/userhome/alanjjp/data/smplx_models/mano'
 
 model:
   bert_config: 'src/modeling/bert/bert-base-uncased/'
   method:
-    framework: 'encoder_decoder_based' #'encoder_decoder_based' # 'encoder_decoder_based'
-    ere_usage: [True, False, False]
+    framework: 'perceiver' #'encoder_decoder_based' # 'encoder_decoder_based'
+    ere_usage: [True, True, False]
   tfm:
     scale: 'L' # 'S', 'M', 'L'
     model_dim: [512, 128]
@@ -17,7 +17,7 @@ model:
     n_self_att_layers: 2
     iterations: 1
     perceiver_layers: 2
-    decoder_features: [True, False, False]
+    decoder_features: [True, True, False]
     output_attentions: True
     drop_out: 0.1
     mesh_type: 'hand'
@@ -35,14 +35,14 @@ model:
 
 
 exper:
-  debug: False
+  debug: True
   run_eval_only: False
   resume_checkpoint: None
-  num_workers: 8
+  num_workers: 0
   output_dir: './output'
-  per_gpu_batch_size: 84
-  lr: 0.0001
-  num_train_epochs: 150
+  per_gpu_batch_size: 1
+  lr: 0.0002
+  num_train_epochs: 300
   device: 'cuda'
   seed: 88
   distributed: True
@@ -52,10 +52,10 @@ exper:
     left_window: [3000, 1000000]
     ev_repre: 'LNES' #'Lnes', 'eci'
     event_range: 'num' # 'time'
-    num_window: 5000
+    num_window: 7000
     num_var: 2000
     cam_view: 'event' # 'world', 'rgb', 'event
-    steps: 1
+    steps: 7
     segments: 1
   augment:
     geometry:

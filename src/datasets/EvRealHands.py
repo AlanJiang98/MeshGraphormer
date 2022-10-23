@@ -83,6 +83,7 @@ class EvRealHands(Dataset):
         # mano_ids_np = np.array(mano_ids, dtype=np.int32)
         # indices = np.diff(mano_ids_np) == 1
         # annot['sample_ids'] = [str(id) for id in mano_ids_np[1:][indices]]
+        # deal with static hand pose
         mano_ids = mano_ids[20:-5]
         annot['sample_ids'] = [str(id) for id in mano_ids]
         K_old = np.array(annot['camera_info']['event']['K_old'])
@@ -126,7 +127,7 @@ class EvRealHands(Dataset):
             self.seq_ids += all_sub_2_seq_ids[str(sub_id)]
         if self.config['exper']['debug']:
             if self.config['exper']['run_eval_only']:
-                seq_ids = ['53', '4']
+                seq_ids = ['1']
             else:
                 seq_ids = ['41', '18']#['24', '18']
             for seq_id in seq_ids:
@@ -147,11 +148,12 @@ class EvRealHands(Dataset):
             pool.join()
             self.data = data_seqs
         # todo
-        # if self.config['exper']['supervision'] and not self.config['exper']['run_eval_only']:
-        #     ids = list(self.data.keys())
-        #     for id in ids:
-        #         if not self.data[id]['annot']['annoted']:
-        #             self.data.pop(id)
+        # add challenging scenes for supervision
+        if self.config['exper']['supervision'] and not self.config['exper']['run_eval_only']:
+            ids = list(self.data.keys())
+            for id in ids:
+                if not self.data[id]['annot']['annoted'] and self.data[id]['annot']['scene'] == 'normal':
+                    self.data.pop(id)
         if is_main_process():
             print('All the sequences for EvRealHands: number: {} items: {}'.format(len(self.data.keys()), len(self.data.keys())))
 
@@ -771,7 +773,7 @@ class EvRealHands(Dataset):
                 frames.update(
                     {
                         'rgb_ori': rgb,
-                        'ev_frames_ori': [torch.tensor(frame, dtype=torch.float32) for frame in ev_frames],
+                        'event_ori': ev_frames,#[torch.tensor(frame, dtype=torch.float32) for frame in ev_frames],
                     }
                 )
                 meta_data.update({
@@ -787,7 +789,7 @@ class EvRealHands(Dataset):
             annot_id = str(int(annot_id) + 1)
         supervision_type = 0
         if not self.config['exper']['run_eval_only']:
-            if not self.data[seq_id]['annot']['annoted']:
+            if not self.data[seq_id]['annot']['annoted'] and self.data[seq_id]['annot']['scene'] == 'normal':
                 if self.config['exper']['use_gt']:
                     supervision_type = 1
                 else:
