@@ -11,7 +11,7 @@ import argparse
 import os
 from os.path import dirname
 import os.path as op
-os.chdir('/userhome/alanjjp/Project/MeshGraphormer')
+os.chdir('/userhome/wangbingxuan/code/MeshGraphormer')
 # os.chdir(dirname(os.getcwd()))
 # import sys
 # sys.path.append(dirname(os.getcwd()))
@@ -52,7 +52,7 @@ from src.utils.metric_pampjpe import reconstruction_error
 from src.utils.geometric_layers import orthographic_projection
 from src.configs.config_parser import ConfigParser
 from src.utils.metric_pampjpe import get_alignMesh, compute_similarity_transform_batch
-
+import pdb
 
 # from azureml.core.run import Run
 # aml_run = Run.get_context()
@@ -266,8 +266,8 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
     steps = config['exper']['preprocess']['steps']
 
     # mpjpe_errors_list = [[], [], [], [], [], [], []]
-    # mpvpe_errors_list = [[], [], [], [], [], [], []]
     # pa_mpjpe_errors_list = [[], [], [], [], [], [], []]
+    # mpvpe_errors_list = [[], [], [], [], [], [], []]
     # pa_mpvpe_errors_list = [[], [], [], [], [], [], []]
     errors_list = []
     for i in range(4):

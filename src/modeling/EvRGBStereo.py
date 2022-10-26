@@ -5,6 +5,7 @@ import torch
 import torchvision.models as models
 from src.modeling.bert import BertConfig, Graphormer
 import src.modeling.data.config as cfg
+from src.modeling.SegAndKpt import SegAndKptModel
 from src.modeling.hrnet.config import config as hrnet_config
 from src.modeling.hrnet.config import update_config as hrnet_update_config
 from src.modeling.hrnet.hrnet_cls_net_gridfeat import get_cls_net_gridfeat
@@ -24,6 +25,7 @@ from pytorch3d.renderer import (
     TexturesVertex
 )
 from pytorch3d.utils import cameras_from_opencv_projection
+import pdb
 
 
 class EvRGBStereo(torch.nn.Module):
@@ -35,9 +37,22 @@ class EvRGBStereo(torch.nn.Module):
         self.mano_layer = MANO(self.config['data']['smplx_path'], use_pca=False, is_rhand=True)
         self.mesh_sampler = MeshSampler()
         self.upsampling = torch.nn.Linear(195, 778)
+        self.seg_kpt_model_rgb = None
+        if (not self.config["exper"]["supervision"]) and self.config["exper"]["use_gt"]:
+            self.seg_kpt_model_rgb = SegAndKptModel(load_pretrain_cpt=self.config["exper"]["fine_tune_weakly"])
+            if not self.config["exper"]["fine_tune_weakly"]:
+                self.seg_kpt_model_rgb.init_dict(self.config["exper"]["seg_kpt_model_path"])
+        self.seg_kpt_model_ev = None
+        if (not self.config["exper"]["supervision"]) and self.config["exper"]["use_gt"]:
+            self.seg_kpt_model_ev = SegAndKptModel(load_pretrain_cpt=self.config["exper"]["fine_tune_weakly"])
+            if not self.config["exper"]["fine_tune_weakly"]:
+                self.seg_kpt_model_ev.init_dict(self.config["exper"]["seg_kpt_model_path"])
+
 
     def create_backbone(self):
         # create backbone model
+        if self.config["exper"]["fine_tune_weakly"]:
+            return None, None # save GPU memory
         if self.config['model']['backbone']['arch'] == 'hrnet':
             hrnet_update_config(hrnet_config, self.config['model']['backbone']['hrnet_yaml'])
             backbone = get_cls_net_gridfeat(hrnet_config, pretrained=self.config['model']['backbone']['hrnet_bb'])
@@ -256,12 +271,14 @@ class EvRGBStereo(torch.nn.Module):
             temp_mask_1 = (adjacency_matrix == 0)
             temp_mask_2 = torch.cat([zeros_1, temp_mask_1], dim=1)
             self.attention_mask = torch.cat([zeros_2, temp_mask_2], dim=0)
-            pass
-
+            #pass
+        else:
+            return None 
     def forward(self, frames, return_att=True, decode_all=False):
         batch_size = frames[0]['rgb'].size(0)
         device = frames[0]['rgb'].device
         output = []
+        # pdb.set_trace()
         if self.config['model']['method']['framework'] == 'encoder_based':
             # Generate T-pose template mesh
             template_rot_pose = torch.zeros((1, 3), device=device)
@@ -495,7 +512,7 @@ class EvRGBStereo(torch.nn.Module):
             pred_3d_joints_0, pred_vertices_0, pred_vertices_sub_0, att_ = infer_decode(
                 self.decoders, jv_tokens, [pos_enc_1, pos_enc_2], [latent_1, latent_2], return_att, self.dim_reduce_dec, attention_mask, self.xyz_regressor, self.upsampling
             )
-
+            # pdb.set_trace()
             output.append([{
                 'pred_3d_joints': pred_3d_joints_0,
                 'pred_vertices': pred_vertices_0,
@@ -538,4 +555,14 @@ class EvRGBStereo(torch.nn.Module):
                         'pred_vertices': pred_vertices_,
                         'pred_vertices_sub': pred_vertices_sub_
                     }])
+        if self.config['model']['method']['framework'] == "pretrain":
+            atts = ()
+            pred_heatmap, pred_seg = self.seg_kpt_model_rgb(frames[0]['rgb'])
+            pred_heatmap_ev,pred_seg_ev = self.seg_kpt_model_ev(frames[0]['ev_frames'][0])
+            output.append([{
+                'pred_heatmap': pred_heatmap,
+                'pred_heatmap_ev': pred_heatmap_ev,
+                'pred_seg': pred_seg,
+                'pred_seg_ev': pred_seg_ev
+            }])
         return output, atts

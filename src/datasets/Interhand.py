@@ -292,6 +292,14 @@ class Interhand(Dataset):
         img = img.astype(np.float32)
         return img
 
+    def load_mask(self, path):
+        mask = cv2.imread(path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
+        if not isinstance(mask, np.ndarray):
+            raise IOError("Fail to read %s" % path)
+        mask = mask.astype(np.float32)/255.0
+        # mask = mask
+        return mask
+
     def get_event_repre(self, event, indices):
         if indices[0] == 0 or indices[-1] >= event.shape[0] - 1 or indices[-1]==indices[0]:
             return torch.zeros((260, 346, 3))
@@ -649,6 +657,18 @@ class Interhand(Dataset):
                                 'Capture'+str(cap_id), self.ges_list[ges_index], \
                                 'cam'+self.data_config['camera_pairs'][pair_id][1], 'image'+img_id+'.jpg')
             rgb = self.load_img(rgb_path)
+            if self.config["exper"]["fine_tune_weakly"]:
+                mask_path = osp.join(self.config['data']['dataset_info']['interhand']['data_dir'],\
+                                    'mask', 'Capture'+str(cap_id), self.ges_list[ges_index], \
+                                'cam'+self.data_config['camera_pairs'][pair_id][1], 'image'+img_id+'.jpg')
+                event_mask_path = osp.join(self.config['data']['dataset_info']['interhand']['data_dir'],\
+                                    "synthetic", 'mask', 'Capture'+str(cap_id), self.ges_list[ges_index], \
+                                'cam'+self.data_config['camera_pairs'][pair_id][1], 'image'+img_id+'.jpg')
+                mask = self.load_mask(mask_path)
+                ev_mask = self.load_mask(event_mask_path)
+            else:
+                mask = np.zeros((self.config['data']["rgb_hw"][0], self.config['data']["rgb_hw"][1], 3), dtype=np.float32)
+                ev_mask = np.zeros((self.config['data']["event_hw"][0], self.config['data']["event_hw"][1], 3), dtype=np.float32)
             rgb_valid = True
             meta_data['rgb_valid'] = rgb_valid
             t_target = t_start + step * 1000000. / 30.
@@ -677,13 +697,20 @@ class Interhand(Dataset):
             # self.plotshow(rgb / 255.)
             rgb = self.rgb_augment(torch.tensor(rgb, dtype=torch.float32).permute(2, 0, 1) / 255.).permute(1, 2, 0)
             # self.plotshow(rgb)
+            if self.config["exper"]["fine_tune_weakly"]:
+                mask = cv2.warpAffine(np.array(mask), aff_2d_rgb, (1064, 920), flags=cv2.INTER_LINEAR)
+                # self.plotshow(rgb / 255.)
+                # mask = self.rgb_augment(torch.tensor(mask, dtype=torch.float32).permute(2, 0, 1) / 255.).permute(1, 2, 0)
+            
 
             for i in range(len(ev_frames)):
                 ev_frames[i] = cv2.warpAffine(np.array(ev_frames[i]), aff_2d_ev, (346, 260), flags=cv2.INTER_LINEAR)
                 # self.plotshow(ev_frames[i])
                 ev_frames[i] = self.event_augment(torch.tensor(ev_frames[i], dtype=torch.float32).permute(2, 0, 1)).permute(1, 2, 0)
                 # self.plotshow(ev_frames[i])
-
+            if self.config["exper"]["fine_tune_weakly"]:
+                ev_mask = cv2.warpAffine(np.array(ev_mask), aff_2d_ev, (346, 260), flags=cv2.INTER_LINEAR)
+                # ev_mask = self.event_augment(torch.tensor(ev_mask, dtype=torch.float32).permute(2, 0, 1)).permute(1, 2, 0)
             # rgb = self.render_hand(
             #     meta_data['mano'],
             #     meta_data['K_rgb'],
@@ -729,6 +756,13 @@ class Interhand(Dataset):
             # self.plotshow(rgb_crop)
             rgb_crop = self.normalize_img(rgb_crop.permute(2, 0, 1)).permute(1, 2, 0)
             # self.plotshow(rgb_crop)
+            if self.config["exper"]["fine_tune_weakly"]:
+                lt_mask, sc_mask, mask_crop = self.crop(bbox_rgb, np.array(mask), self.config['exper']['bbox']['rgb']['size'],
+                                                 hw=[512, 334])
+                mask_crop = torch.tensor(mask_crop, dtype=torch.float32)
+                # self.plotshow(rgb_crop)
+                # mask_crop = self.normalize_img(mask_crop.permute(2, 0, 1)).permute(1, 2, 0)
+            
 
             ev_frames_crop = []
             lt_evs, sc_evs = [], []
@@ -739,6 +773,11 @@ class Interhand(Dataset):
                 lt_evs.append(lt_ev)
                 sc_evs.append(sc_ev)
                 ev_frames_crop.append(torch.tensor(ev_frame_crop, dtype=torch.float32))
+            if self.config["exper"]["fine_tune_weakly"]:
+                lt_ev_mask, sc_ev_mask, ev_mask_crop = self.crop(bbox_evs[-1], np.array(ev_mask),
+                                                            self.config['exper']['bbox']['event']['size'],
+                                                            hw=[260, 346])
+                ev_mask_crop = torch.tensor(ev_mask_crop, dtype=torch.float32)
 
             tf_w_c = self.change_camera_view(meta_data)
 
@@ -751,11 +790,25 @@ class Interhand(Dataset):
                 'lt_evs': lt_evs,
                 'sc_evs': sc_evs,
             })
+            if self.config["exper"]["fine_tune_weakly"]:
+                meta_data.update({
+                    'lt_mask': lt_mask,
+                    'sc_mask': sc_mask,
+                    'lt_ev_mask': lt_ev_mask,
+                    'sc_ev_mask': sc_ev_mask,
+
+                })
 
             frames = {
                 'rgb': rgb_crop,
                 'ev_frames': ev_frames_crop,
             }
+            if self.config["exper"]["fine_tune_weakly"]:
+                meta_data.update({
+                    'mask': mask_crop,
+                    'ev_mask': ev_mask_crop,
+                })
+
             if self.config['exper']['run_eval_only']:
                 frames.update(
                     {
@@ -763,6 +816,11 @@ class Interhand(Dataset):
                         'ev_frames_ori': [torch.tensor(frame, dtype=torch.float32) for frame in ev_frames],
                     }
                 )
+                if self.config["exper"]["fine_tune_weakly"]:
+                    frames.update({
+                        'mask_ori': mask,
+                        'ev_mask_ori': ev_mask,
+                })
                 meta_data.update({
                     'cap_id': torch.tensor(int(cap_id)),
                     'ges_index': torch.tensor(ges_index),

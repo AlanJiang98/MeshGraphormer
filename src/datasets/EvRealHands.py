@@ -199,6 +199,14 @@ class EvRealHands(Dataset):
         img = img.astype(np.float32)
         return img
 
+    def load_mask(self, path):
+        mask = cv2.imread(path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
+        if not isinstance(mask, np.ndarray):
+            raise IOError("Fail to read %s" % path)
+        mask = mask.astype(np.float32)/255.0
+        # mask = mask
+        return mask
+
     def get_annotations(self, seq_id, cam_pair, annot_id):
         meta_data = {}
         meta_data['delta_time'] = self.data[seq_id]['annot']['delta_time']
@@ -648,9 +656,20 @@ class EvRealHands(Dataset):
                 rgb_path = osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id, 'images', cam_pair[1],\
                                     'image' + str(annot_id).rjust(4, '0') + '.jpg')
                 rgb = self.load_img(rgb_path)
+                if self.config["exper"]["fine_tune_weakly"]:
+                    mask_path = osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id, 'mask', cam_pair[1],\
+                                    'image' + str(annot_id).rjust(4, '0') + '.jpg')
+                    mask = self.load_mask(mask_path)
+                    assert (mask[...,0]==mask[...,1]).all() and (mask[...,1]==mask[...,2]).all(), "mask should be gray image"
+                    ev_mask_path = osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id, 'mask', cam_pair[0],\
+                                    'image' + str(annot_id).rjust(4, '0') + '.jpg')
+                    ev_mask = self.load_mask(ev_mask_path)
+                    assert (ev_mask[...,0]==ev_mask[...,1]).all() and (ev_mask[...,1]==ev_mask[...,2]).all(), "mask should be gray image"
                 rgb_valid = True
             else:
                 rgb = np.zeros((920, 1064, 3), dtype=np.float32)
+                if self.config["exper"]["fine_tune_weakly"]:
+                    mask = np.zeros((920, 1064, 3), dtype=np.float32)
                 rgb_valid = False
             meta_data['rgb_valid'] = rgb_valid
 
@@ -682,6 +701,11 @@ class EvRealHands(Dataset):
             # self.plotshow(rgb / 255.)
             rgb = self.rgb_augment(torch.tensor(rgb, dtype=torch.float32).permute(2, 0, 1) / 255.).permute(1, 2, 0)
             # self.plotshow(rgb)
+            if self.config["exper"]["fine_tune_weakly"]:
+                mask = cv2.warpAffine(np.array(mask), aff_2d_rgb, (1064, 920), flags=cv2.INTER_LINEAR)
+            # self.plotshow(rgb / 255.)
+            # mask = self.rgb_augment(torch.tensor(mask, dtype=torch.float32).permute(2, 0, 1) / 255.).permute(1, 2, 0) # color doesn't need augment
+            # self.plotshow(rgb)
 
             for i in range(len(ev_frames)):
                 ev_frames[i] = cv2.warpAffine(np.array(ev_frames[i]), aff_2d_ev, (346, 260), flags=cv2.INTER_LINEAR)
@@ -689,6 +713,9 @@ class EvRealHands(Dataset):
                 ev_frames[i] = self.event_augment(torch.tensor(ev_frames[i], dtype=torch.float32).permute(2, 0, 1)).permute(1, 2, 0)
                 # self.plotshow(ev_frames[i])
                 pass
+            if self.config["exper"]["fine_tune_weakly"]:
+                ev_mask = cv2.warpAffine(np.array(ev_mask), aff_2d_ev, (346, 260), flags=cv2.INTER_LINEAR)
+                # ev_mask = self.event_augment(torch.tensor(ev_mask, dtype=torch.float32).permute(2, 0, 1)).permute(1, 2, 0)
             # rgb = self.render_hand(
             #     meta_data['mano'],
             #     meta_data['K_rgb'],
@@ -739,6 +766,12 @@ class EvRealHands(Dataset):
             # self.plotshow(rgb_crop)
             rgb_crop = self.normalize_img(rgb_crop.permute(2, 0, 1)).permute(1, 2, 0)
             # self.plotshow(rgb_crop)
+            if self.config["exper"]["fine_tune_weakly"]:
+                lt_mask, sc_mask, mask_crop = self.crop(bbox_rgb, np.array(mask), self.config['exper']['bbox']['rgb']['size'], hw=[920, 1064])
+                mask_crop = torch.tensor(mask_crop, dtype=torch.float32)
+                # self.plotshow(rgb_crop)
+                # mask_crop = self.normalize_img(mask_crop.permute(2, 0, 1)).permute(1, 2, 0)
+            # self.plotshow(rgb_crop)
 
             ev_frames_crop = []
             lt_evs, sc_evs = [], []
@@ -748,7 +781,12 @@ class EvRealHands(Dataset):
                 lt_evs.append(lt_ev)
                 sc_evs.append(sc_ev)
                 ev_frames_crop.append(torch.tensor(ev_frame_crop, dtype=torch.float32))
-
+            if self.config["exper"]["fine_tune_weakly"]:
+                lt_ev_mask, sc_ev_mask, ev_mask_crop = self.crop(bbox_evs[-1], np.array(ev_mask),
+                                                            self.config['exper']['bbox']['event']['size'],
+                                                            hw=[260, 346])
+                ev_mask_crop = torch.tensor(ev_mask_crop, dtype=torch.float32)
+            
             tf_w_c = self.change_camera_view(meta_data)
 
             meta_data.update({
@@ -758,10 +796,24 @@ class EvRealHands(Dataset):
                 'sc_evs': sc_evs,
             })
 
+            if self.config["exper"]["fine_tune_weakly"]:
+                meta_data.update({
+                    'lt_mask': lt_mask,
+                    'sc_mask': sc_mask,
+                    'lt_ev_mask': lt_ev_mask,
+                    'sc_ev_mask': sc_ev_mask,
+
+                })
             frames = {
                 'rgb': rgb_crop,
                 'ev_frames': ev_frames_crop,
             }
+            if self.config["exper"]["fine_tune_weakly"]:
+                meta_data.update({
+                    'mask': mask_crop,
+                    'ev_mask': ev_mask_crop,
+                })
+
             if self.config['exper']['run_eval_only']:
                 frames.update(
                     {
@@ -769,6 +821,11 @@ class EvRealHands(Dataset):
                         'ev_frames_ori': [torch.tensor(frame, dtype=torch.float32) for frame in ev_frames],
                     }
                 )
+                if self.config["exper"]["fine_tune_weakly"]:
+                        frames.update({
+                            'mask_ori': mask,
+                            'ev_mask_ori': ev_mask,
+                    })                
                 meta_data.update({
                     'seq_id': torch.tensor(int(seq_id)),
                     'seq_type': torch.tensor(self.get_seq_type(seq_id)),

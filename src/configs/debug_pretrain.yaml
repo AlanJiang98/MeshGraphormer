@@ -1,5 +1,5 @@
 data:
-  dataset_yaml: '/userhome/alanjjp/Project/MeshGraphormer/src/datasets/dataset.yaml'
+  dataset_yaml: '/userhome/wangbingxuan/code/MeshGraphormer/src/datasets/dataset.yaml'
   dataset: ['interhand', 'evrealhands']
   event: True # unused
   smplx_path: '/userhome/alanjjp/data/smplx_models/mano'
@@ -9,7 +9,7 @@ data:
 model:
   bert_config: 'src/modeling/bert/bert-base-uncased/'
   method:
-    framework: 'encoder_decoder_based' #'encoder_decoder_based' # 'encoder_decoder_based'
+    framework: "pretrain" #'perceiver' #'encoder_decoder_based' # 'encoder_decoder_based' # "pretrain"
     ere_usage: [False, True, False]
   tfm:
     # config for FASTMETRO
@@ -41,24 +41,26 @@ model:
 exper:
   debug: False
   run_eval_only: False
-  resume_checkpoint: None
-  num_workers: 4
+  resume_checkpoint: '/userhome/wangbingxuan/code/MeshGraphormer/output/debug_pretrain_2/checkpoint-10-8180/state_dict.bin'
+  num_workers: 8
   output_dir: './output'
-  per_gpu_batch_size: 64
+  per_gpu_batch_size: 32
   lr: 0.0001
   num_train_epochs: 200
   device: 'cuda'
   seed: 88
-  distributed: True
+  distributed: True #True
   # ground truth if true else weakly
-  supervision: True
-  use_gt: False
+  supervision: False # should be false
+  use_gt: True # should be false
+  fine_tune_weakly: True # True to pretrain, False for inference
+  seg_kpt_model_path: "/userhome/wangbingxuan/code/MeshGraphormer/models/self_super/SegAndKptModel.pth"
   preprocess:
     ere_rate: 1.0 # unused
     left_window: [3000, 1000000]
     ev_repre: 'LNES' #'Lnes', 'eci'
     event_range: 'num' # 'time'
-    num_window: 5000
+    num_window: 7000
     num_var: 2000
     cam_view: 'rgb' # 'world', 'rgb', 'event
     steps: 1
@@ -113,6 +115,8 @@ exper:
     seg_event: 10.0
     2d_joints_rgb: 50.
     2d_joints_event: 50.
+    bce_rgb: 0.001
+    bce_event: 0.001
 
 eval:
   fast: False
