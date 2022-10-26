@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn.functional as F
 from src.modeling._mano import MANO
 from src.modeling._mano import Mesh as MeshSampler
 from pytorch3d.renderer import (BlendParams, HardFlatShader, MeshRasterizer,
@@ -46,8 +47,8 @@ class Loss(torch.nn.Module):
 
     def init_criterion(self):
         # define loss function (criterion) and optimizer
-        self.criterion_2d_joints = torch.nn.MSELoss(reduction='none').cuda(self.config['exper']['device'])
-        self.criterion_3d_joints = torch.nn.MSELoss(reduction='none').cuda(self.config['exper']['device'])
+        self.criterion_2d_joints = torch.nn.L1Loss(reduction='none').cuda(self.config['exper']['device'])
+        self.criterion_3d_joints = torch.nn.L1Loss(reduction='none').cuda(self.config['exper']['device'])
         self.criterion_vertices = torch.nn.L1Loss(reduction='none').cuda(self.config['exper']['device'])
 
     def get_3d_joints_loss(self, gt_3d_joints, pred_3d_joints, mask):
@@ -177,6 +178,21 @@ class Loss(torch.nn.Module):
             super_3d_valid = meta_data[step]['supervision_type'] == 0
             super_2d_valid = torch.logical_not(super_3d_valid)
             manos = meta_data[step]['mano']
+
+            if self.config['model']['method']['framework'] == 'eventhands':
+                loss_hand_pose = F.mse_loss(preds[step][-1]['pred_hand_pose'], manos['hand_pose'].squeeze(dim=1))
+                loss_shape = F.mse_loss(preds[step][-1]['pred_shape'], manos['shape'].squeeze(dim=1))
+                loss_rot_pose = F.mse_loss(preds[step][-1]['pred_rot_pose'], manos['rot_pose'].squeeze(dim=1))
+
+                loss_items.update({
+                    'loss_hand_pose_' + str(step): loss_hand_pose,
+                    'loss_shape_' + str(step): loss_shape,
+                    'loss_rot_pose_' + str(step): loss_rot_pose,
+                })
+
+                loss_sum += loss_hand_pose * 5. + loss_shape * 5. + loss_rot_pose * 20
+                continue
+
             gt_dest_mano_output = self.mano_layer(
                 global_orient=manos['rot_pose'].reshape(-1, 3),
                 hand_pose=manos['hand_pose'].reshape(-1, 45),

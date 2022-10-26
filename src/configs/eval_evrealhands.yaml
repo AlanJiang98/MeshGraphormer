@@ -8,7 +8,7 @@ exper:
   preprocess:
     ev_repre: 'LNES' #'Lnes', 'eci'
     event_range: 'num' # 'time'
-    num_window: 5000
+    num_window: 7000
 
 eval:
   fast_fps: 120
@@ -19,7 +19,7 @@ eval:
     mesh: True
     attention_map: True
     errors: True
-    rendered: True
+    rendered: False
     vis_rendered: 'event'
   augment:
     scale: 1.0

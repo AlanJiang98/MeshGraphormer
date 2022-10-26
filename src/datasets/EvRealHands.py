@@ -149,11 +149,11 @@ class EvRealHands(Dataset):
             self.data = data_seqs
         # todo
         # add challenging scenes for supervision
-        if self.config['exper']['supervision'] and not self.config['exper']['run_eval_only']:
-            ids = list(self.data.keys())
-            for id in ids:
-                if not self.data[id]['annot']['annoted'] and self.data[id]['annot']['scene'] == 'normal':
-                    self.data.pop(id)
+        # if self.config['exper']['supervision'] and not self.config['exper']['run_eval_only']:
+        #     ids = list(self.data.keys())
+        #     for id in ids:
+        #         if not self.data[id]['annot']['annoted'] and self.data[id]['annot']['scene'] == 'normal':
+        #             self.data.pop(id)
         if is_main_process():
             print('All the sequences for EvRealHands: number: {} items: {}'.format(len(self.data.keys()), len(self.data.keys())))
 
@@ -788,12 +788,12 @@ class EvRealHands(Dataset):
             meta_data_output.append(meta_data)
             annot_id = str(int(annot_id) + 1)
         supervision_type = 0
-        if not self.config['exper']['run_eval_only']:
-            if not self.data[seq_id]['annot']['annoted'] and self.data[seq_id]['annot']['scene'] == 'normal':
-                if self.config['exper']['use_gt']:
-                    supervision_type = 1
-                else:
-                    supervision_type = 2
+        # if not self.config['exper']['run_eval_only']:
+        #     if not self.data[seq_id]['annot']['annoted'] and self.data[seq_id]['annot']['scene'] == 'normal':
+        #         if self.config['exper']['use_gt']:
+        #             supervision_type = 1
+        #         else:
+        #             supervision_type = 2
         for i in range(len(meta_data_output)):
             meta_data_output[i]['bbox_valid'] = bbox_valid
             meta_data_output[i]['supervision_type'] = supervision_type

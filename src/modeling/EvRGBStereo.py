@@ -38,6 +38,11 @@ class EvRGBStereo(torch.nn.Module):
 
     def create_backbone(self):
         # create backbone model
+        if self.config['model']['method']['framework'] == 'eventhands':
+            res50_pretrained = models.resnet50(pretrained=True)
+            self.eventhands_encoder_main = torch.nn.Sequential(*list(res50_pretrained.children())[:-1])
+            self.eventhands_encoder_fc = torch.nn.Linear(2048, 58)
+            return None, None
         if self.config['model']['backbone']['arch'] == 'hrnet':
             hrnet_update_config(hrnet_config, self.config['model']['backbone']['hrnet_yaml'])
             backbone = get_cls_net_gridfeat(hrnet_config, pretrained=self.config['model']['backbone']['hrnet_bb'])
@@ -262,6 +267,28 @@ class EvRGBStereo(torch.nn.Module):
         batch_size = frames[0]['rgb'].size(0)
         device = frames[0]['rgb'].device
         output = []
+        if self.config['model']['method']['framework'] == 'eventhands':
+            x = self.eventhands_encoder_main(frames[0]['ev_frames'][0].permute(0, 3, 1, 2))
+            x = self.eventhands_encoder_fc(x.flatten(1))
+            atts = None
+            mano_output = self.mano_layer(
+                global_orient=x[:, :3],
+                hand_pose=x[:, 3:48],
+                betas=x[:, 48:58],
+                transl=torch.zeros((batch_size, 3), device=device),
+            )
+            pred_3d_joints = mano_output.joints - mano_output.joints[:, :1]
+            pred_vertices = mano_output.vertices - mano_output.joints[:, :1]
+            pred_vertices_sub = self.mesh_sampler.downsample(mano_output.vertices) - mano_output.joints[:, :1]
+            output.append([{
+                'pred_3d_joints': pred_3d_joints,
+                'pred_vertices': pred_vertices,
+                'pred_vertices_sub': pred_vertices_sub,
+                'pred_rot_pose': x[:, :3],
+                'pred_hand_pose': x[:, 3:48],
+                'pred_shape': x[:, 48:58],
+            }])
+
         if self.config['model']['method']['framework'] == 'encoder_based':
             # Generate T-pose template mesh
             template_rot_pose = torch.zeros((1, 3), device=device)

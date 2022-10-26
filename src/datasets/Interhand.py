@@ -170,8 +170,8 @@ class Interhand(Dataset):
             for cap_id in self.data_config['cap_ids']:
                 if 'Capture'+str(cap_id) in valid_cap_ids:
                     cap_id = str(cap_id)
-                    if self.config['exper']['supervision'] and int(cap_id) not in self.data_config['super_ids']:
-                        continue
+                    # if self.config['exper']['supervision'] and int(cap_id) not in self.data_config['super_ids']:
+                    #     continue
                     data_ = self.get_samples_per_cap(self.data, self.config, self.data_config, self.ges_list, cap_id)
                     self.samples += data_[0][cap_id]
                     self.bbox_inter[cap_id] = data_[1][cap_id]
@@ -777,12 +777,12 @@ class Interhand(Dataset):
             meta_data_output.append(meta_data)
             img_id = str(int(img_id) + 3)
         supervision_type = 0
-        if not self.config['exper']['run_eval_only']:
-            if int(cap_id) not in self.data_config['super_ids']:
-                if self.config['exper']['use_gt']:
-                    supervision_type = 1
-                else:
-                    supervision_type = 2
+        # if not self.config['exper']['run_eval_only']:
+        #     if int(cap_id) not in self.data_config['super_ids']:
+        #         if self.config['exper']['use_gt']:
+        #             supervision_type = 1
+        #         else:
+        #             supervision_type = 2
         for i in range(len(meta_data_output)):
             meta_data_output[i]['bbox_valid'] = bbox_valid
             meta_data_output[i]['supervision_type'] = supervision_type
