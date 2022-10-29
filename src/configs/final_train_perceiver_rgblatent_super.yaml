@@ -1,12 +1,12 @@
 data:
   dataset_yaml: '/userhome/alanjjp/Project/MeshGraphormer/src/datasets/dataset.yaml'
-  dataset: ['interhand', 'evrealhands']
+  dataset: ['evrealhands']
   smplx_path: '/userhome/alanjjp/data/smplx_models/mano'
 
 model:
   bert_config: 'src/modeling/bert/bert-base-uncased/'
   method:
-    framework: 'encoder_decoder_based' #'encoder_decoder_based' # 'encoder_decoder_based'
+    framework: 'perceiver' #'encoder_decoder_based' # 'encoder_decoder_based'
     ere_usage: [True, False, False]
   tfm:
     scale: 'L' # 'S', 'M', 'L'
@@ -14,6 +14,8 @@ model:
     feedforward_dim: [1024, 256]
     pos_type: 'sine'
     nhead: 8
+    latent: 'rgb'
+    scene_weight: True
     n_self_att_layers: 2
     iterations: 1
     perceiver_layers: 2
@@ -35,12 +37,12 @@ model:
 
 
 exper:
-  debug: False
+  debug: True
   run_eval_only: False
   resume_checkpoint: None
-  num_workers: 8
+  num_workers: 0
   output_dir: './output'
-  per_gpu_batch_size: 80
+  per_gpu_batch_size: 2
   lr: 0.0002
   num_train_epochs: 300
   device: 'cuda'
@@ -54,8 +56,8 @@ exper:
     event_range: 'num' # 'time'
     num_window: 7000
     num_var: 2000
-    cam_view: 'event' # 'world', 'rgb', 'event
-    steps: 1
+    cam_view: 'rgb' # 'world', 'rgb', 'event
+    steps: 2
     segments: 1
   augment:
     geometry:
@@ -64,14 +66,14 @@ exper:
       rot: 0.2
     rgb_photometry:
       colorjitter:
-        p: 0.2
+        p: 0.15
         brightness:
           thre: [0.6, 5.]
       gauss:
         var: [0.1, 0.2]
         p: 0.8
       gaussianblur:
-        p: 0.2
+        p: 0.15
         kernel_size: 19
         sigma: [4, 8]
       salt_pepper:
@@ -107,6 +109,8 @@ exper:
     seg_event: 10.0
     2d_joints_rgb: 50.
     2d_joints_event: 50.
+    label_smoothing: 0.1
+    scene: 10.
 
 eval:
   fast: False

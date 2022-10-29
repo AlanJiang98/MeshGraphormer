@@ -65,12 +65,16 @@ class PhotometricAug(object):
         if not self.is_train:
             return x
         else:
+            scene = torch.zeros(3)
             if torch.rand(1) < self.colorjitter_aug[0]:
                 x = self.colorjitter_aug[1](x)
+                scene[0] = 1
             if torch.rand(1) < self.gaussianblur_aug[0]:
                 x = self.gaussianblur_aug[1](x)
+                scene[1] = 1
             if torch.rand(1) < self.conifg['gauss']['p']:
                 x = PhotometricAug.gaussian_noise(x, var_limit=self.conifg['gauss']['var'])
             if torch.rand(1) < self.conifg['salt_pepper']['p']:
                 x = PhotometricAug.salt_pepper_noise(x, self.conifg['salt_pepper']['rate'])
-            return x
+                scene[2] = 1
+            return x, scene

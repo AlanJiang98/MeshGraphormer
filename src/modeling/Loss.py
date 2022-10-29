@@ -50,6 +50,9 @@ class Loss(torch.nn.Module):
         self.criterion_2d_joints = torch.nn.L1Loss(reduction='none').cuda(self.config['exper']['device'])
         self.criterion_3d_joints = torch.nn.L1Loss(reduction='none').cuda(self.config['exper']['device'])
         self.criterion_vertices = torch.nn.L1Loss(reduction='none').cuda(self.config['exper']['device'])
+        if 'scene_weight' in self.config['model']['tfm'].keys() and self.config['model']['tfm']['scene_weight']:
+            self.criterion_scene = torch.nn.CrossEntropyLoss(reduction='none', label_smoothing=self.config['exper']['loss']['label_smoothing']).cuda(self.config['exper']['device'])
+
 
     def get_3d_joints_loss(self, gt_3d_joints, pred_3d_joints, mask):
         gt_root = gt_3d_joints[:, 0, :]
@@ -234,6 +237,16 @@ class Loss(torch.nn.Module):
                     'loss_3d_joints_'+str(step): loss_3d_joints,
                     'loss_3d_joints_reg_'+str(step): loss_3d_joints_reg,
                 })
+
+                if step == 0:
+                    if 'scene_weight' in self.config['model']['tfm'].keys() and self.config['model']['tfm']['scene_weight']:
+                        loss_scene = (self.criterion_scene(preds[step][-1]['scene_weight'], meta_data[step]['scene_weight'])[super_3d_valid]).mean()
+                        loss_sum += self.config['exper']['loss']['scene'] * ratio * loss_scene
+                        loss_items.update(
+                            {
+                                'scene_weight_'+str(step): loss_scene
+                            }
+                        )
             if super_2d_valid.any():
                 batch_size = super_2d_valid.sum()
                 faces = torch.tensor(self.mano_layer.faces.astype(np.int32)).repeat(batch_size, 1, 1).to(device)

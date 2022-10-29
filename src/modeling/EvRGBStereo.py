@@ -214,6 +214,11 @@ class EvRGBStereo(torch.nn.Module):
                                     'perceiver_layers': self.config['model']['tfm']['perceiver_layers']
                                         }
 
+            if 'scene_weight' in self.config['model']['tfm'].keys() and self.config['model']['tfm']['scene_weight']:
+                self.avgpool = torch.nn.AdaptiveAvgPool2d((1, 1))
+                self.fc_scene_weight = torch.nn.Linear(1024, 1)
+                self.softmax = torch.nn.Softmax(dim=1)
+
             self.stereo_encoders = torch.nn.ModuleList()
             self.event_encoders = torch.nn.ModuleList()
             self.perveivers = torch.nn.ModuleList()
@@ -279,15 +284,19 @@ class EvRGBStereo(torch.nn.Module):
             )
             pred_3d_joints = mano_output.joints - mano_output.joints[:, :1]
             pred_vertices = mano_output.vertices - mano_output.joints[:, :1]
-            pred_vertices_sub = self.mesh_sampler.downsample(mano_output.vertices) - mano_output.joints[:, :1]
+
             output.append([{
                 'pred_3d_joints': pred_3d_joints,
                 'pred_vertices': pred_vertices,
-                'pred_vertices_sub': pred_vertices_sub,
                 'pred_rot_pose': x[:, :3],
                 'pred_hand_pose': x[:, 3:48],
                 'pred_shape': x[:, 48:58],
             }])
+            if not self.config['exper']['run_eval_only']:
+                pred_vertices_sub = self.mesh_sampler.downsample(mano_output.vertices) - mano_output.joints[:, :1]
+                output[0].update({
+                    'pred_vertices_sub': pred_vertices_sub,
+                })
 
         if self.config['model']['method']['framework'] == 'encoder_based':
             # Generate T-pose template mesh
@@ -472,12 +481,15 @@ class EvRGBStereo(torch.nn.Module):
             jv_tokens = torch.cat([self.joint_token_embed.weight, self.vertex_token_embed.weight], dim=0).unsqueeze(1).repeat(1, batch_size, 1)
             attention_mask = self.attention_mask.to(device)
             grid_feat_list = []
+            scene_weight_list = []
             hws = []
 
             atts = ()
             # stereo feature
             _, grid_feat_ev = self.ev_backbone(frames[0]['ev_frames'][0].permute(0, 3, 1, 2))#[:, :2])
             _, _, h, w = grid_feat_ev.shape
+            if 'scene_weight' in self.config['model']['tfm'].keys() and self.config['model']['tfm']['scene_weight']:
+                scene_weight_list.append(self.avgpool(grid_feat_ev).flatten(2))
             hws.append([h, w])
             grid_feat_ev = self.conv_1x1_ev(grid_feat_ev).flatten(2).permute(2, 0, 1)
             grid_feat_list.append(grid_feat_ev)
@@ -485,11 +497,25 @@ class EvRGBStereo(torch.nn.Module):
             # extract grid features and global image features using a CNN backbone
             _, grid_feat_rgb = self.rgb_backbone(frames[0]['rgb'].permute(0, 3, 1, 2))
             _, _, h, w = grid_feat_rgb.shape
+            if 'scene_weight' in self.config['model']['tfm'].keys() and self.config['model']['tfm']['scene_weight']:
+                scene_weight_list.append(self.avgpool(grid_feat_rgb).flatten(2))
             hws.append([h, w])
             grid_feat_rgb = self.conv_1x1_rgb(grid_feat_rgb).flatten(2).permute(2, 0, 1)
             grid_feat_list.append(grid_feat_rgb)
 
             stereo_features = torch.cat(grid_feat_list, dim=0)
+
+            scene_weight = torch.ones((*stereo_features.shape[:2], 1), device=stereo_features.device)
+
+            if 'scene_weight' in self.config['model']['tfm'].keys() and self.config['model']['tfm']['scene_weight']:
+                scene_weight_feat = torch.cat(scene_weight_list, dim=2).permute(0, 2, 1)
+                scene_weight_pre = self.fc_scene_weight(scene_weight_feat).flatten(1)
+                scene_weight_ = self.softmax(scene_weight_pre)
+                scene_weight[:hws[0][0] * hws[0][1]] *= scene_weight_[:, :1][None, ...]#.repeat(stereo_features.shape[0], 1, 1)
+                scene_weight[hws[0][0] * hws[0][1]:] *= scene_weight_[:, 1:][None, ...]#.repeat(stereo_features.shape[0], 1, 1)
+
+            stereo_features *= scene_weight
+
             pos_enc_1 = self.position_encoding_1(batch_size, hws, device).flatten(2).permute(2, 0, 1)
             pos_enc_2 = self.position_encoding_2(batch_size, hws, device).flatten(2).permute(2, 0, 1)
             pos_enc_ev_2 = self.position_encoding_2(batch_size, hws[:1], device).flatten(2).permute(2, 0, 1)
@@ -517,6 +543,12 @@ class EvRGBStereo(torch.nn.Module):
 
             # stereo encoder
             latent_1, latent_2, att_ = infer_encode(self.stereo_encoders, stereo_features, [pos_enc_1, pos_enc_2], return_att, self.dim_reduce_stereo)
+            if 'latent' in self.config['model']['tfm'].keys() and self.config['model']['tfm']['latent'] == 'rgb':
+                start_index = hws[0][0] * hws[0][1]
+                latent_1 = latent_1[start_index:]
+                latent_2 = latent_2[start_index:]
+                pos_enc_1 = pos_enc_1[start_index:]
+                pos_enc_2 = pos_enc_2[start_index:]
             atts += (att_, )
             # stereo decoder
             pred_3d_joints_0, pred_vertices_0, pred_vertices_sub_0, att_ = infer_decode(
@@ -528,6 +560,10 @@ class EvRGBStereo(torch.nn.Module):
                 'pred_vertices': pred_vertices_0,
                 'pred_vertices_sub': pred_vertices_sub_0
             }])
+            if 'scene_weight' in self.config['model']['tfm'].keys() and self.config['model']['tfm']['scene_weight']:
+                output[0][0].update({
+                    'scene_weight': scene_weight_pre,
+                })
 
             for i in range(1, len(frames)):
                 for j in range(len(frames[i]['ev_frames'])):

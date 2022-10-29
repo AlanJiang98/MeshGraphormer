@@ -127,7 +127,7 @@ class EvRealHands(Dataset):
             self.seq_ids += all_sub_2_seq_ids[str(sub_id)]
         if self.config['exper']['debug']:
             if self.config['exper']['run_eval_only']:
-                seq_ids = ['1']
+                seq_ids = ['1', '53']
             else:
                 seq_ids = ['41', '18']#['24', '18']
             for seq_id in seq_ids:
@@ -684,13 +684,15 @@ class EvRealHands(Dataset):
 
             rgb = cv2.warpAffine(np.array(rgb), aff_2d_rgb, (1064, 920), flags=cv2.INTER_LINEAR)
             # self.plotshow(rgb / 255.)
-            rgb = self.rgb_augment(torch.tensor(rgb, dtype=torch.float32).permute(2, 0, 1) / 255.).permute(1, 2, 0)
+            rgb, rgb_scene = self.rgb_augment(torch.tensor(rgb, dtype=torch.float32).permute(2, 0, 1) / 255.)
+            rgb = rgb.permute(1, 2, 0)
             # self.plotshow(rgb)
 
             for i in range(len(ev_frames)):
                 ev_frames[i] = cv2.warpAffine(np.array(ev_frames[i]), aff_2d_ev, (346, 260), flags=cv2.INTER_LINEAR)
                 # self.plotshow(ev_frames[i])
-                ev_frames[i] = self.event_augment(torch.tensor(ev_frames[i], dtype=torch.float32).permute(2, 0, 1)).permute(1, 2, 0)
+                ev_frames[i], event_scene = self.event_augment(torch.tensor(ev_frames[i], dtype=torch.float32).permute(2, 0, 1))
+                ev_frames[i] = ev_frames[i].permute(1, 2, 0)
                 # self.plotshow(ev_frames[i])
                 pass
             # rgb = self.render_hand(
@@ -758,11 +760,20 @@ class EvRealHands(Dataset):
 
             tf_w_c = self.change_camera_view(meta_data)
 
+            seq_type = self.get_seq_type(seq_id)
+            scene_type = torch.ones(2)
+            if seq_type in [4, 5] or event_scene[2] == 1:
+                scene_type[0] = 0
+            if seq_type in [2,3,6] or rgb_scene[0]==1 or rgb_scene[1] == 1:
+                scene_type[1] = 0
+
+
             meta_data.update({
                 'lt_rgb': lt_rgb,
                 'sc_rgb': sc_rgb,
                 'lt_evs': lt_evs,
                 'sc_evs': sc_evs,
+                'scene_weight': scene_type,
             })
 
             frames = {
@@ -778,7 +789,7 @@ class EvRealHands(Dataset):
                 )
                 meta_data.update({
                     'seq_id': torch.tensor(int(seq_id)),
-                    'seq_type': torch.tensor(self.get_seq_type(seq_id)),
+                    'seq_type': torch.tensor(seq_type),
                     'annot_id': torch.tensor(int(annot_id)),
                 })
             meta_data.update({
