@@ -167,11 +167,15 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
             scheduler.load_state_dict(latest_dict["scheduler"])
             last_epoch = latest_dict["epoch"]
             last_step = latest_dict["iteration"]
+            del latest_dict
+            gc.collect()
+            torch.cuda.empty_cache()
+            
     for iteration, (frames, meta_data) in enumerate(train_dataloader):
-        if iteration < last_step:
-            continue
+        # if iteration < last_step:
+        #     continue
         EvRGBStereo_model.train()
-        iteration += 1
+        iteration += max(last_step,1)
         epoch = iteration // iters_per_epoch
         # adjust_learning_rate(optimizer, epoch, config)
         data_time.update(time.time() - end)
@@ -724,7 +728,7 @@ def main(config):
     set_seed(config['exper']['seed'], num_gpus)
     print("Using {} GPUs".format(num_gpus))
 
-
+    start_iter = 0
     if config['exper']['run_eval_only'] == True and config['exper']['resume_checkpoint'] != None and\
             config['exper']['resume_checkpoint'] != 'None' and 'state_dict' not in config['exper']['resume_checkpoint']:
         # if only run eval, load checkpoint
@@ -740,6 +744,11 @@ def main(config):
             print("Loading from recent...")
             latest_dict = torch.load(os.path.join(config['exper']['output_dir'], 'latest.ckpt'))
             _model.load_state_dict(latest_dict["model"])
+            start_iter = latest_dict['iteration']
+            del latest_dict
+            gc.collect()
+            torch.cuda.empty_cache()
+            print("finish loading model")
 
 
 
@@ -771,7 +780,7 @@ def main(config):
             run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, _model, _loss)
 
     else:
-        train_dataloader = make_hand_data_loader(config)
+        train_dataloader = make_hand_data_loader(config,start_iter)
         run(config, train_dataloader, _model, _loss)
 
     if is_main_process() and not config['exper']['run_eval_only']:
