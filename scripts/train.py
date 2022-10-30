@@ -582,16 +582,28 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
 def run_eval_and_save(config, val_dataloader, EvRGBStereo_model):
     mano_layer = MANO(config['data']['smplx_path'], use_pca=False, is_rhand=True).cuda()
     if config['exper']['distributed']:
-        EvRGBStereo_model = torch.nn.parallel.DistributedDataParallel(
-            EvRGBStereo_model, device_ids=[int(os.environ["LOCAL_RANK"])],
-            output_device=int(os.environ["LOCAL_RANK"]),
-            find_unused_parameters=True,
-        )
-        mano_layer = torch.nn.parallel.DistributedDataParallel(
-            mano_layer, device_ids=[int(os.environ["LOCAL_RANK"])],
-            output_device=int(os.environ["LOCAL_RANK"]),
-            find_unused_parameters=True,
-        )
+        if os.environ["LOCAL_RANK"] is None:
+            EvRGBStereo_model = torch.nn.parallel.DistributedDataParallel(
+                EvRGBStereo_model, device_ids=[int(config["LOCAL_RANK"])],
+                output_device=int(config["LOCAL_RANK"]),
+                find_unused_parameters=True,
+            )
+            mano_layer = torch.nn.parallel.DistributedDataParallel(
+                mano_layer, device_ids=[int(config["LOCAL_RANK"])],
+                output_device=int(config["LOCAL_RANK"]),
+                find_unused_parameters=True,
+            )
+        else:
+            EvRGBStereo_model = torch.nn.parallel.DistributedDataParallel(
+                EvRGBStereo_model, device_ids=[int(os.environ["LOCAL_RANK"])],
+                output_device=int(os.environ["LOCAL_RANK"]),
+                find_unused_parameters=True,
+            )
+            mano_layer = torch.nn.parallel.DistributedDataParallel(
+                mano_layer, device_ids=[int(os.environ["LOCAL_RANK"])],
+                output_device=int(os.environ["LOCAL_RANK"]),
+                find_unused_parameters=True,
+            )
 
     EvRGBStereo_model.eval()
 
@@ -650,6 +662,7 @@ def run_eval_and_save(config, val_dataloader, EvRGBStereo_model):
 def get_config():
     warnings.filterwarnings("ignore")
     parser = argparse.ArgumentParser('Training')
+    parser.add_argument('--local_rank', type=int, default=0)
     parser.add_argument('--config', type=str, default='./src/configs/train_evrealhands.yaml')
     parser.add_argument('--resume_checkpoint', type=str, default='')
     parser.add_argument('--config_merge', type=str, default='')
@@ -665,6 +678,7 @@ def get_config():
     if args.config_merge != '':
         config.merge_configs(args.config_merge)
     config = config.config
+    config["LOCAL_RANK"] = args.local_rank
     if args.output_dir != '':
         config['exper']['output_dir'] = args.output_dir
     if args.resume_checkpoint != '':
