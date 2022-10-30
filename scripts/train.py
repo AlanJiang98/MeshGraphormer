@@ -11,7 +11,7 @@ import argparse
 import os
 from os.path import dirname
 import os.path as op
-os.chdir('/userhome/alanjjp/Project/MeshGraphormer')
+# os.chdir('/userhome/wangbingxuan/code/MeshGraphormer')
 # os.chdir(dirname(os.getcwd()))
 # import sys
 # sys.path.append(dirname(os.getcwd()))
@@ -52,6 +52,9 @@ from src.utils.metric_pampjpe import reconstruction_error
 from src.utils.geometric_layers import orthographic_projection
 from src.configs.config_parser import ConfigParser
 from src.utils.metric_pampjpe import get_alignMesh, compute_similarity_transform_batch
+import tarfile
+import shutil
+import hfai.checkpoint
 
 
 # from azureml.core.run import Run
@@ -122,8 +125,10 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
     data_time = AverageMeter()
     log_losses = AverageMeter()
     last_epoch = 0
-
+    last, last_step, others = hfai.checkpoint.init(EvRGBStereo_model, optimizer=optimizer, scheduler=scheduler, ckpt_path='latest.pt')
     for iteration, (frames, meta_data) in enumerate(train_dataloader):
+        if iteration < last_step:
+            continue
         EvRGBStereo_model.train()
         iteration += 1
         epoch = iteration // iters_per_epoch
@@ -172,6 +177,7 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
                 )
 
         if iteration % iters_per_epoch == 0:
+            model.try_save(epoch, iteration, others=None)
             if epoch % 10 == 0:
                 checkpoint_dir = save_checkpoint(EvRGBStereo_model, config, epoch, iteration)
 
@@ -646,6 +652,13 @@ def main(config):
         torch.distributed.init_process_group(
             backend='nccl'  # , init_method='env://'
         )
+        if is_main_process():
+            temp_path = os.path.join(os.getcwd(), 'temp')
+            if os.path.exists(temp_path):
+                shutil.rmtree(temp_path)
+            tar = tarfile.open(config['data']['dataset_info']['evrealhands']['data_dir'],"r")
+            name_list =[i for i in tar.getmembers() if i.name.endswith(".aedat4")]
+            tar.extractall(path=temp_path, members=name_list)
         synchronize()
 
     mkdir(config['exper']['output_dir'])
