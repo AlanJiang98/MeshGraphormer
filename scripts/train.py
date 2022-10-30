@@ -55,10 +55,40 @@ from src.utils.metric_pampjpe import get_alignMesh, compute_similarity_transform
 import tarfile
 import shutil
 import hfai.checkpoint
+from ffrecord import PackedFolder
+import io
 
 
 # from azureml.core.run import Run
 # aml_run = Run.get_context()
+
+def save_latest(model, optimizer,scheduler, config, epoch,iteration,num_trial=10):
+    checkpoint_path = op.join(config['exper']['output_dir'], 'latest.ckpt')
+    if not is_main_process():
+        return checkpoint_path
+    if not os.path.exists(config['exper']['output_dir']):
+        os.makedirs(config['exper']['output_dir'])
+    model_to_save = model.module if hasattr(model, 'module') else model
+    optimizer_to_save = optimizer.module if hasattr(optimizer, 'module') else optimizer
+    scheduler_to_save = scheduler.module if hasattr(scheduler, 'module') else scheduler
+    output_dict = {
+        'model': model_to_save.state_dict(),
+        'optimizer': optimizer_to_save.state_dict(),
+        'scheduler': scheduler_to_save.state_dict(),
+        'epoch': epoch,
+        'iteration': iteration,
+    }
+    for i in range(num_trial):
+        try:
+            torch.save(output_dict, checkpoint_path)
+            print("Save latest checkpoint to {}".format(checkpoint_path))
+            break
+        except:
+            pass
+    else:
+        print("Failed to save checkpoint after {} trails.".format(num_trial))
+    return checkpoint_path
+
 
 def save_checkpoint(model, config, epoch, iteration, num_trial=10):
     checkpoint_dir = op.join(config['exper']['output_dir'], 'checkpoint-{}-{}'.format(
@@ -108,12 +138,13 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
             output_device=int(os.environ["LOCAL_RANK"]),
             find_unused_parameters=True,
         )
-
+    
     # todo change the pos of the optimizer
     optimizer = torch.optim.Adam(params=list(EvRGBStereo_model.parameters()),
                                  lr=config['exper']['lr'],
                                  betas=(0.9, 0.999),
                                  weight_decay=0)
+    
 
     # todo add scheduler
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config['exper']['num_train_epochs'])
@@ -125,12 +156,23 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
     data_time = AverageMeter()
     log_losses = AverageMeter()
     last_epoch = 0
-    last, last_step, others = hfai.checkpoint.init(EvRGBStereo_model, optimizer=optimizer, scheduler=scheduler, ckpt_path='latest.pt')
+    last_step = 0
+    if os.path.exists(os.path.join(config['exper']['output_dir'], 'latest.ckpt')):
+            print("Loading from recent...")
+            latest_dict = torch.load(os.path.join(config['exper']['output_dir'], 'latest.ckpt'))
+            optimizer.load_state_dict(latest_dict["optimizer"])
+            scheduler.load_state_dict(latest_dict["scheduler"])
+            last_epoch = latest_dict["epoch"]
+            last_step = latest_dict["iteration"]
+            del latest_dict
+            gc.collect()
+            torch.cuda.empty_cache()
+            
     for iteration, (frames, meta_data) in enumerate(train_dataloader):
-        if iteration < last_step:
-            continue
+        # if iteration < last_step:
+        #     continue
         EvRGBStereo_model.train()
-        iteration += 1
+        iteration += max(last_step,1)
         epoch = iteration // iters_per_epoch
         # adjust_learning_rate(optimizer, epoch, config)
         data_time.update(time.time() - end)
@@ -177,7 +219,7 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
                 )
 
         if iteration % iters_per_epoch == 0:
-            model.try_save(epoch, iteration, others=None)
+            save_latest(EvRGBStereo_model, optimizer, scheduler, config, epoch, iteration)
             if epoch % 10 == 0:
                 checkpoint_dir = save_checkpoint(EvRGBStereo_model, config, epoch, iteration)
 
@@ -654,11 +696,20 @@ def main(config):
         )
         if is_main_process():
             temp_path = os.path.join(os.getcwd(), 'temp')
+            # folder = PackedFolder("/home/wangbingxuan/hfai_dataset/EvRealHands_hfai.ffr")
             if os.path.exists(temp_path):
                 shutil.rmtree(temp_path)
+            # os.makedirs(temp_path)
             tar = tarfile.open(config['data']['dataset_info']['evrealhands']['data_dir'],"r")
             name_list =[i for i in tar.getmembers() if i.name.endswith(".aedat4")]
             tar.extractall(path=temp_path, members=name_list)
+            # seq_ids = folder.list("")
+            # for seq_id in seq_ids:
+            #     event_path = os.path.join(seq_id, "event.aedat4")
+            #     fp = io.BytesIO(folder.read_one(event_path))
+            #     with open(os.path.join(temp_path, seq_id+".aedat4"), 'wb') as f:
+            #         f.write(fp.read())
+
         synchronize()
 
     mkdir(config['exper']['output_dir'])
@@ -674,7 +725,7 @@ def main(config):
     set_seed(config['exper']['seed'], num_gpus)
     print("Using {} GPUs".format(num_gpus))
 
-
+    start_iter = 0
     if config['exper']['run_eval_only'] == True and config['exper']['resume_checkpoint'] != None and\
             config['exper']['resume_checkpoint'] != 'None' and 'state_dict' not in config['exper']['resume_checkpoint']:
         # if only run eval, load checkpoint
@@ -685,6 +736,18 @@ def main(config):
 
         # build network
         _model = EvRGBStereo(config=config)
+
+        if os.path.exists(os.path.join(config['exper']['output_dir'], 'latest.ckpt')):
+            print("Loading from recent...")
+            latest_dict = torch.load(os.path.join(config['exper']['output_dir'], 'latest.ckpt'))
+            _model.load_state_dict(latest_dict["model"])
+            start_iter = latest_dict['iteration']
+            del latest_dict
+            gc.collect()
+            torch.cuda.empty_cache()
+            print("finish loading model")
+
+
 
         if config['exper']['resume_checkpoint'] != None and config['exper']['resume_checkpoint'] != 'None':
             # for fine-tuning or resume training or inference, load weights from checkpoint
@@ -714,7 +777,7 @@ def main(config):
             run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, _model, _loss)
 
     else:
-        train_dataloader = make_hand_data_loader(config)
+        train_dataloader = make_hand_data_loader(config,start_iter)
         run(config, train_dataloader, _model, _loss)
 
     if is_main_process() and not config['exper']['run_eval_only']:

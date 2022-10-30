@@ -68,7 +68,7 @@ class Interhand(Dataset):
         self.tar = tarfile.open(self.config['data']['dataset_info']['interhand']['data_dir'])
         # self.img_dict = {}
         self.event_dict = {}
-        self.folder = PackedFolder("/home/wangbingxuan/hfai_dataset/Interhand_hfai.ffr")
+        self.folder = PackedFolder(self.config['data']['dataset_info']['interhand']['ffr_dir'])
         self.load_annotations()
         self.process_samples()
         self.mano_layer = MANO(self.config['data']['smplx_path'], use_pca=False, is_rhand=True)
@@ -134,14 +134,15 @@ class Interhand(Dataset):
     #     return data
     
     @staticmethod
-    def get_samples_per_cap(data, tar_name, config, data_config, ges_list, cap_id):
+    def get_samples_per_cap(data, tar_name, config, data_config, ges_list, cap_id, folder=None):
         if is_main_process():
             print('Process cap {} start!'.format(cap_id))
         tar = tarfile.open(tar_name)
-        cap_ev_dir = osp.join("Interhand", data_config['event_dir'], 'Capture' + cap_id)
-        ges_list_ = [i.split('/')[-1] for i in tar.getnames() if i.startswith(osp.join(cap_ev_dir,'0')) and "cam" not in i]
+        cap_ev_dir = osp.join(data_config['event_dir'], 'Capture' + cap_id)
+        # ges_list_ = [i.split('/')[-1] for i in tar.getnames() if i.startswith(osp.join(cap_ev_dir,'0')) and "cam" not in i]
+        ges_list_ = folder.list((osp.join(data_config['event_dir'], 'Capture0')))
         ges_list_.sort()
-        npz_list = [i for i in tar.getnames() if i.endswith('.npz')]
+        # npz_list = [i for i in tar.getnames() if i.endswith('.npz')]
         samples = []
         bbox_inter_f_cap = {}
         ev_list_ = {}
@@ -154,18 +155,21 @@ class Interhand(Dataset):
                 for pair_id, cam_pair in enumerate(data_config['camera_pairs']):
                     # print(pair_id)
                     ev_path = osp.join(cap_ev_dir, ges, 'cam' + cam_pair[0], 'events.npz')
-                    if ev_path in npz_list:
+                    # if ev_path in npz_list:
+                    if folder.exists(ev_path):
+                        ev_path = osp.join("Interhand", ev_path)
                         events = np.load(tar.extractfile(ev_path))
                         events = events['events']
                         events[:, :1] = 345 - events[:, :1]
                         events[:, 1:2] = 259 - events[:, 1:2]
                         ev_list_[ev_path] = events
 
-                        img_dir_ = osp.join("Interhand", data_config['img_dir'], \
+                        img_dir_ = osp.join(data_config['img_dir'], \
                                             'Capture' + cap_id, ges, 'cam' + cam_pair[1])
                         # if not osp.exists(img_dir_):
                         #     continue
-                        img_name_list = [i.split('/')[-1] for i in tar.getnames() if i.startswith(img_dir_) and "jpg" in i]
+                        # img_name_list = [i.split('/')[-1] for i in tar.getnames() if i.startswith(img_dir_) and "jpg" in i]
+                        img_name_list =  [i.split('/')[-1] for i in folder.list(img_dir_)]
                         img_name_list.sort()
                         # pdb.set_trace()
                         img_id_list = [img_name[5:-4] for img_name in img_name_list]
@@ -232,7 +236,7 @@ class Interhand(Dataset):
         # pdb.set_trace()
         if self.config['exper']['debug']:
             cap_id = '1'
-            data_ = self.get_samples_per_cap(self.data, self.tar_name, self.config, self.data_config, self.ges_list, cap_id)
+            data_ = self.get_samples_per_cap(self.data, self.tar_name, self.config, self.data_config, self.ges_list, cap_id,self.folder)
             self.samples += data_[0][cap_id]
             self.bbox_inter[cap_id] = data_[1][cap_id]
             # self.img_dict.update(data_[2][cap_id])
@@ -254,7 +258,7 @@ class Interhand(Dataset):
                     pool.apply_async(
                         Interhand.get_samples_per_cap,
                         args=(
-                            self.data, self.tar_name, copy.deepcopy(self.config), copy.deepcopy(self.data_config), copy.deepcopy(self.ges_list), cap_id,
+                            self.data, self.tar_name, copy.deepcopy(self.config), copy.deepcopy(self.data_config), copy.deepcopy(self.ges_list), cap_id, self.folder,
                         ),
                         callback=collect_data
                     )

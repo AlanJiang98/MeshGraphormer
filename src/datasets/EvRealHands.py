@@ -60,7 +60,7 @@ class EvRealHands(Dataset):
         # if "ffr" in self.config['data']['dataset_info']['evrealhands']['data_dir']:
         #     self.ffr = PackedFolder(self.config['data']['dataset_info']['evrealhands']['data_dir'])
         # untat files for later usage
-        self.folder = PackedFolder("/home/wangbingxuan/hfai_dataset/EvRealHands_hfai.ffr")
+        self.folder = PackedFolder(self.config['data']['dataset_info']['evrealhands']['ffr_dir'])
         self.tar = tarfile.open(self.config['data']['dataset_info']['evrealhands']['data_dir'],"r")
         self.tar_name = self.config['data']['dataset_info']['evrealhands']['data_dir']
         self.temp_path = os.path.join(os.getcwd(), 'temp')
