@@ -240,11 +240,15 @@ class Loss(torch.nn.Module):
 
                 if step == 0:
                     if 'scene_weight' in self.config['model']['tfm'].keys() and self.config['model']['tfm']['scene_weight']:
-                        loss_scene = (self.criterion_scene(preds[step][-1]['scene_weight'], meta_data[step]['scene_weight'])[super_3d_valid]).mean()
-                        loss_sum += self.config['exper']['loss']['scene'] * ratio * loss_scene
+                        loss_scene_ev = (self.criterion_scene(preds[step][-1]['scene_weight'][:, 0], meta_data[step]['scene_weight'][:, 0].long())[super_3d_valid]).mean()
+                        loss_scene_rgb = (self.criterion_scene(preds[step][-1]['scene_weight'][:, 1],
+                                                               meta_data[step]['scene_weight'][:, 1].long())[
+                            super_3d_valid]).mean()
+                        loss_sum += self.config['exper']['loss']['scene'] * ratio * (loss_scene_rgb + loss_scene_ev)
                         loss_items.update(
                             {
-                                'scene_weight_'+str(step): loss_scene
+                                'scene_weight_rgb_'+str(step): loss_scene_rgb,
+                                'scene_weight_ev_' + str(step): loss_scene_ev,
                             }
                         )
             if super_2d_valid.any():

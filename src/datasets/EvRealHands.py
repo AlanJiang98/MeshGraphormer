@@ -155,7 +155,7 @@ class EvRealHands(Dataset):
         #         if not self.data[id]['annot']['annoted'] and self.data[id]['annot']['scene'] == 'normal':
         #             self.data.pop(id)
         if is_main_process():
-            print('All the sequences for EvRealHands: number: {} items: {}'.format(len(self.data.keys()), len(self.data.keys())))
+            print('All the sequences for EvRealHands: number: {} items: {}'.format(len(self.data.keys()), self.data.keys()))
 
     def process_samples(self):
         '''

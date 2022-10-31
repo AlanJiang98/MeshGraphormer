@@ -111,7 +111,7 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
     optimizer = torch.optim.Adam(params=list(EvRGBStereo_model.parameters()),
                                  lr=config['exper']['lr'],
                                  betas=(0.9, 0.999),
-                                 weight_decay=0)
+                                 weight_decay=0.0001)
 
     # todo add scheduler
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config['exper']['num_train_epochs'])
@@ -702,7 +702,7 @@ def main(config):
             # for fine-tuning or resume training or inference, load weights from checkpoint
             print("Loading state dict from checkpoint {}".format(config['exper']['resume_checkpoint']))
             # workaround approach to load sparse tensor in graph conv.
-            state_dict = torch.load(config['exper']['resume_checkpoint'])
+            state_dict = torch.load(config['exper']['resume_checkpoint'], map_location='cpu')
             _model.load_state_dict(state_dict, strict=False)
             del state_dict
             gc.collect()

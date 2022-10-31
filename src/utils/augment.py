@@ -62,10 +62,11 @@ class PhotometricAug(object):
         return x_
 
     def __call__(self, x):
+        scene = torch.zeros(3)
         if not self.is_train:
-            return x
+            return x, scene
         else:
-            scene = torch.zeros(3)
+
             if torch.rand(1) < self.colorjitter_aug[0]:
                 x = self.colorjitter_aug[1](x)
                 scene[0] = 1

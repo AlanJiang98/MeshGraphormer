@@ -1,13 +1,13 @@
 data:
   dataset_yaml: '/userhome/alanjjp/Project/MeshGraphormer/src/datasets/dataset.yaml'
-  dataset: ['evrealhands']
+  dataset: ['evrealhands']#, 'interhand']
   smplx_path: '/userhome/alanjjp/data/smplx_models/mano'
 
 model:
   bert_config: 'src/modeling/bert/bert-base-uncased/'
   method:
     framework: 'perceiver' #'encoder_decoder_based' # 'encoder_decoder_based'
-    ere_usage: [True, False, False]
+    ere_usage: [True, True, False]
   tfm:
     scale: 'L' # 'S', 'M', 'L'
     model_dim: [512, 128]
@@ -18,8 +18,9 @@ model:
     scene_weight: True
     n_self_att_layers: 2
     iterations: 1
+    mask: 0.
     perceiver_layers: 2
-    decoder_features: [True, False, False]
+    decoder_features: [True, True, False]
     output_attentions: True
     drop_out: 0.1
     mesh_type: 'hand'
@@ -34,7 +35,8 @@ model:
     arch: 'hrnet'
     hrnet_yaml: 'models/hrnet/cls_hrnet_w64_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
     hrnet_bb: 'models/hrnet/hrnetv2_w64_imagenet_pretrained.pth'
-
+#    hrnet_yaml: 'models/hrnet/cls_hrnet_w40_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
+#    hrnet_bb: 'models/hrnet/hrnetv2_w40_imagenet_pretrained.pth'
 
 exper:
   debug: True
@@ -42,9 +44,9 @@ exper:
   resume_checkpoint: None
   num_workers: 0
   output_dir: './output'
-  per_gpu_batch_size: 2
+  per_gpu_batch_size: 1
   lr: 0.0002
-  num_train_epochs: 300
+  num_train_epochs: 200
   device: 'cuda'
   seed: 88
   distributed: True
@@ -57,7 +59,7 @@ exper:
     num_window: 7000
     num_var: 2000
     cam_view: 'rgb' # 'world', 'rgb', 'event
-    steps: 3
+    steps: 1
     segments: 1
   augment:
     geometry:

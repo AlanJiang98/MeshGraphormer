@@ -7,19 +7,19 @@ model:
   bert_config: 'src/modeling/bert/bert-base-uncased/'
   method:
     framework: 'perceiver' #'encoder_decoder_based' # 'encoder_decoder_based'
-    ere_usage: [True, False, False]
+    ere_usage: [True, True, False]
   tfm:
     scale: 'L' # 'S', 'M', 'L'
     model_dim: [512, 128]
     feedforward_dim: [1024, 256]
     pos_type: 'sine'
     nhead: 8
-    latent: 'rgb'
+    latent: 'all'
     scene_weight: True
     n_self_att_layers: 2
     iterations: 1
     perceiver_layers: 2
-    decoder_features: [True, False, False]
+    decoder_features: [True, True, False]
     output_attentions: True
     drop_out: 0.1
     mesh_type: 'hand'
@@ -37,12 +37,12 @@ model:
 
 
 exper:
-  debug: True
+  debug: False
   run_eval_only: False
   resume_checkpoint: None
-  num_workers: 0
+  num_workers: 6
   output_dir: './output'
-  per_gpu_batch_size: 2
+  per_gpu_batch_size: 42
   lr: 0.0002
   num_train_epochs: 300
   device: 'cuda'
@@ -57,7 +57,7 @@ exper:
     num_window: 7000
     num_var: 2000
     cam_view: 'rgb' # 'world', 'rgb', 'event
-    steps: 3
+    steps: 1
     segments: 1
   augment:
     geometry:

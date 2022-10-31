@@ -16,6 +16,7 @@ from src.modeling._mano import MANO
 
 from src.configs.config_parser import ConfigParser
 from src.datasets.EvRealHands import EvRealHands
+from src.datasets.Interhand import Interhand
 
 def get_config():
     parser = argparse.ArgumentParser('Training')
@@ -39,61 +40,89 @@ def get_config():
 
 config = get_config()
 
-#a = Interhand(config)
-dataset = EvRealHands(config)
+a = Interhand(config)
 
-output_dir = './scripts/forpaper/teaser'
+davis_width = 346
+davis_height = 260
+factor = 1
+img_ori_height, img_ori_width = 512, 334
+
+# get the affine matrix from RGB frame to event frame, and this affine matrix will influence the camera intrinsics
+src_points = np.float32([[0, 0], [img_ori_width / 2 - 1, 0], [img_ori_width / 2 - 1, img_ori_height * factor]])
+dst_points = np.float32([[davis_width / 2 - img_ori_width / 2 * davis_height / factor / img_ori_height, 0],
+                         [davis_width / 2 - 1, 0],
+                         [davis_width / 2 - 1, davis_height - 1]])
+affine_matrix = cv2.getAffineTransform(src_points, dst_points)
+
+output_dir = '/userhome/alanjjp/Project/MeshGraphormer/scripts/forpaper/interhand_seq0'
 mkdir(output_dir)
 
-item = dataset[92]
-t_l = 113 * 1e6 / 15. + dataset.data['1']['annot']['delta_time'] - 1e6 / 15.
-t_r = t_l + 7 * 1e6 / 15.
-events_all = dataset.data['1']['event']
-indices = np.searchsorted(
-            events_all[:, 3],
-            np.array([t_l, t_r])
-        )
+for i in range(0, len(a), 20):
+    frames, _ = a[i]
+    rgb = frames[0]['rgb_ori']
+    rgb_affine = cv2.warpAffine(rgb.numpy(), affine_matrix, (davis_width, davis_height))
+    eci = frames[0]['ev_frames_ori'][0]
+    rgb_affine = rgb_affine[:, 100:250, ...]
+    eci = eci[:, 100:250, ...].numpy()
+    pair = np.concatenate([rgb_affine, eci], axis=1)
+    imageio.imwrite(os.path.join(output_dir, 'eci_{}.png'.format(i)), (pair * 255).astype(np.uint8))
+    pass
 
-events = events_all[indices[0]:indices[1]]
 
-event_basic = np.concatenate([events[:, :2], events[:, 3:4]], axis=1)
-event_basic[:, 0] /= 346
-event_basic[:, 1] /= 260
-event_basic[:, 2] /= (1e6 / 15.)
-index_red = events[:, 2] == 0
-index_green = events[:, 2] == 1
-events_pc = np.concatenate([event_basic, np.ones_like(event_basic) * 255], axis=1)
-events_pc[index_red, 4:] = 0
-events_pc[index_green, 3] = 0
-events_pc[index_green, 5] = 0
-print(events_pc.shape)
-events_pc = events_pc[10::]
-data_pc = {
-    'x': events_pc[:, 0],
-    'y': events_pc[:, 1],
-    'z': events_pc[:, 2],
-    'red': events_pc[:, 3].astype(np.uint8),
-    'green': events_pc[:, 4].astype(np.uint8),
-    'blue': events_pc[:, 5].astype(np.uint8)
-}
-cloud = PyntCloud(pd.DataFrame(data=data_pc))
-cloud.to_file(os.path.join(output_dir, 'output_events.ply'))
-
-mano_layer = MANO(config['data']['smplx_path'], use_pca=False, is_rhand=True)
-
-for step in range(len(item[1])):
-    manos = item[1][step]['mano']
-    mano_output = mano_layer(
-        global_orient=manos['rot_pose'].reshape(-1, 3),
-        hand_pose=manos['hand_pose'].reshape(-1, 45),
-        betas=manos['shape'].reshape(-1, 10),
-        transl=manos['trans'].reshape(-1, 3)
-    )
-    with open(os.path.join(output_dir, 'mesh_{}.obj'.format(step)), 'w') as file_object:
-        for ver in mano_output.vertices[0].detach().cpu():
-            # for ver in y['vertices_inter'][0, k, i - 3].detach().cpu():
-            print('v %f %f %f' % (ver[0], ver[1], ver[2]), file=file_object)
-        for f in mano_layer.faces:
-            print('f %d %d %d' % (f[0] + 1, f[1] + 1, f[2] + 1), file=file_object)
+# dataset = EvRealHands(config)
+#
+# output_dir = './scripts/forpaper/teaser'
+# mkdir(output_dir)
+#
+# item = dataset[92]
+# t_l = 113 * 1e6 / 15. + dataset.data['1']['annot']['delta_time'] - 1e6 / 15.
+# t_r = t_l + 7 * 1e6 / 15.
+# events_all = dataset.data['1']['event']
+# indices = np.searchsorted(
+#             events_all[:, 3],
+#             np.array([t_l, t_r])
+#         )
+#
+# events = events_all[indices[0]:indices[1]]
+#
+# event_basic = np.concatenate([events[:, :2], events[:, 3:4]], axis=1)
+# event_basic[:, 0] /= 346
+# event_basic[:, 1] /= 260
+# event_basic[:, 2] /= (1e6 / 15.)
+# index_red = events[:, 2] == 0
+# index_green = events[:, 2] == 1
+# events_pc = np.concatenate([event_basic, np.ones_like(event_basic) * 255], axis=1)
+# events_pc[index_red, 4:] = 0
+# events_pc[index_green, 3] = 0
+# events_pc[index_green, 5] = 0
+# print(events_pc.shape)
+# events_pc = events_pc[10::]
+# data_pc = {
+#     'x': events_pc[:, 0],
+#     'y': events_pc[:, 1],
+#     'z': events_pc[:, 2],
+#     'red': events_pc[:, 3].astype(np.uint8),
+#     'green': events_pc[:, 4].astype(np.uint8),
+#     'blue': events_pc[:, 5].astype(np.uint8)
+# }
+# cloud = PyntCloud(pd.DataFrame(data=data_pc))
+# cloud.to_file(os.path.join(output_dir, 'output_events.ply'))
+#
+# mano_layer = MANO(config['data']['smplx_path'], use_pca=False, is_rhand=True)
+#
+# for step in range(len(item[1])):
+#     manos = item[1][step]['mano']
+#     mano_output = mano_layer(
+#         global_orient=manos['rot_pose'].reshape(-1, 3),
+#         hand_pose=manos['hand_pose'].reshape(-1, 45),
+#         betas=manos['shape'].reshape(-1, 10),
+#         transl=manos['trans'].reshape(-1, 3)
+#     )
+#     with open(os.path.join(output_dir, 'mesh_{}.obj'.format(step)), 'w') as file_object:
+#         for ver in mano_output.vertices[0].detach().cpu():
+#             # for ver in y['vertices_inter'][0, k, i - 3].detach().cpu():
+#             print('v %f %f %f' % (ver[0], ver[1], ver[2]), file=file_object)
+#         for f in mano_layer.faces:
+#             print('f %d %d %d' % (f[0] + 1, f[1] + 1, f[2] + 1), file=file_object)
 
 print('over!')

@@ -216,8 +216,8 @@ class EvRGBStereo(torch.nn.Module):
 
             if 'scene_weight' in self.config['model']['tfm'].keys() and self.config['model']['tfm']['scene_weight']:
                 self.avgpool = torch.nn.AdaptiveAvgPool2d((1, 1))
-                self.fc_scene_weight = torch.nn.Linear(1024, 1)
-                self.softmax = torch.nn.Softmax(dim=1)
+                self.fc_scene_weight = torch.nn.Linear(1024, 2)
+                self.softmax = torch.nn.Softmax(dim=-1)
 
             self.stereo_encoders = torch.nn.ModuleList()
             self.event_encoders = torch.nn.ModuleList()
@@ -509,12 +509,19 @@ class EvRGBStereo(torch.nn.Module):
 
             if 'scene_weight' in self.config['model']['tfm'].keys() and self.config['model']['tfm']['scene_weight']:
                 scene_weight_feat = torch.cat(scene_weight_list, dim=2).permute(0, 2, 1)
-                scene_weight_pre = self.fc_scene_weight(scene_weight_feat).flatten(1)
+                scene_weight_pre = self.fc_scene_weight(scene_weight_feat)
                 scene_weight_ = self.softmax(scene_weight_pre)
-                scene_weight[:hws[0][0] * hws[0][1]] *= scene_weight_[:, :1][None, ...]#.repeat(stereo_features.shape[0], 1, 1)
-                scene_weight[hws[0][0] * hws[0][1]:] *= scene_weight_[:, 1:][None, ...]#.repeat(stereo_features.shape[0], 1, 1)
+                scene_weight[:hws[0][0] * hws[0][1]] *= scene_weight_[:, :1, 1][None, ...]#.repeat(stereo_features.shape[0], 1, 1)
+                scene_weight[hws[0][0] * hws[0][1]:] *= scene_weight_[:, 1:, 1][None, ...]#.repeat(stereo_features.shape[0], 1, 1)
 
             stereo_features *= scene_weight
+
+            if 'mask' in self.config['model']['tfm'].keys():
+                grid_mask = torch.ones((*stereo_features.shape[:2], 1), device=stereo_features.device)
+                len_rand = (torch.rand(1) * self.config['model']['tfm']['mask'] * stereo_features.shape[0]).int()
+                index = torch.randperm(stereo_features.shape[0])[:len_rand]
+                grid_mask[index] = 0
+                stereo_features *= grid_mask
 
             pos_enc_1 = self.position_encoding_1(batch_size, hws, device).flatten(2).permute(2, 0, 1)
             pos_enc_2 = self.position_encoding_2(batch_size, hws, device).flatten(2).permute(2, 0, 1)
