@@ -1,12 +1,12 @@
 data:
-  dataset_yaml:  './src/datasets/dataset.yaml'#'/userhome/alanjjp/Project/MeshGraphormer/src/datasets/dataset.yaml'
-  dataset: ['interhand', 'evrealhands']
-  smplx_path: '/userhome/alanjjp/data/smplx_models/mano'
+  dataset_yaml:  './src/datasets/dataset_hfai.yaml'
+  dataset: [ 'interhand','evrealhands'] #'interhand',,'evrealhands'
+  smplx_path: './models/mano'
 
 model:
   bert_config: 'src/modeling/bert/bert-base-uncased/'
   method:
-    framework: 'perceiver' #'encoder_decoder_based' # 'encoder_decoder_based'
+    framework: 'encoder_decoder_based' #'encoder_decoder_based' # 'encoder_decoder_based'
     ere_usage: [False, True, False]
   tfm:
     scale: 'L' # 'S', 'M', 'L'
@@ -14,13 +14,13 @@ model:
     feedforward_dim: [1024, 256]
     pos_type: 'sine'
     nhead: 8
-    latent: 'rgb'
-    scene_weight: True
+    latent: 'all'
+    scene_weight: False
     n_self_att_layers: 2
     iterations: 1
-    mask: 0.
+    mask: 0.2
     perceiver_layers: 2
-    decoder_features: [True, True, False]
+    decoder_features: [False, True, False]
     output_attentions: True
     drop_out: 0.1
     mesh_type: 'hand'
@@ -39,12 +39,12 @@ model:
 #    hrnet_bb: 'models/hrnet/hrnetv2_w40_imagenet_pretrained.pth'
 
 exper:
-  debug: True
+  debug: False
   run_eval_only: False
   resume_checkpoint: None
-  num_workers: 0
+  num_workers: 8
   output_dir: './output'
-  per_gpu_batch_size: 1
+  per_gpu_batch_size: 80
   lr: 0.0002
   num_train_epochs: 200
   device: 'cuda'
@@ -68,14 +68,14 @@ exper:
       rot: 0.2
     rgb_photometry:
       colorjitter:
-        p: 0.15
+        p: 0.2
         brightness:
           thre: [0.6, 5.]
       gauss:
         var: [0.1, 0.2]
         p: 0.8
       gaussianblur:
-        p: 0.15
+        p: 0.2
         kernel_size: 19
         sigma: [4, 8]
       salt_pepper:
@@ -94,7 +94,7 @@ exper:
         kernel_size: 15
         sigma: [0.5, 3.]
       salt_pepper:
-        p: 0.15
+        p: 0.2
         rate: 0.1
   bbox:
     rate: 1.5
@@ -106,7 +106,7 @@ exper:
     vertices: 100.0
     vertices_sub: 100.0
     3d_joints: 200.0
-    3d_joints_from_mesh: 100.0
+    3d_joints_from_mesh: 200.0
     seg_rgb: 10.0
     seg_event: 10.0
     2d_joints_rgb: 50.

@@ -788,7 +788,48 @@ def main(config):
                             f.write(fp.read())
 
         synchronize()
+    else:
+        temp_path = os.path.join(os.getcwd(), 'temp')
+        folder = PackedFolder(config['data']['dataset_info']['evrealhands']['ffr_dir'])
+        if os.path.exists(temp_path) and os.path.exists(os.path.join(temp_path, "EvRealHands", '0', "event.aedat4")):
+            pass
+        else:
+            os.makedirs(temp_path)
+            # tar = tarfile.open(config['data']['dataset_info']['evrealhands']['data_dir'],"r")
+            # name_list =[i for i in tar.getmembers() if i.name.endswith(".aedat4")]
+            # tar.extractall(path=temp_path, members=name_list)
+            seq_ids = folder.list("")
+            # def write_event(seq_id_):
+            #     event_path = os.path.join(seq_id_, "event.aedat4")
+            #     fp = io.BytesIO(folder.read_one(event_path))
+            #     with open(os.path.join(temp_path, "EvRealHands",seq_id_,"event.aedat4"), 'wb') as f:
+            #         f.write(fp.read())
+            # pool = mp.Pool(mp.cpu_count())
+            for seq_id in seq_ids:
+                if folder.is_dir(seq_id):
+                    if not os.path.exists(os.path.join(temp_path, seq_id)):
+                        os.makedirs(os.path.join(temp_path, "EvRealHands", seq_id))
 
+                    #         pool.apply_async(
+                    #             write_event,
+                    #             args=(
+                    #                 seq_id,
+                    #                 folder,
+                    #                 temp_path,
+                    #             ),
+                    #         )
+
+                    # pool.close()
+                    # pool.join()
+                    # for seq_id in seq_ids:
+                    #     if folder.is_dir(seq_id):
+                    #         if not os.path.exists(os.path.join(temp_path, "EvRealHands",seq_id,"event.aedat4")):
+                    #             print(f"error {seq_id}")
+
+                    event_path = os.path.join(seq_id, "event.aedat4")
+                    fp = io.BytesIO(folder.read_one(event_path))
+                    with open(os.path.join(temp_path, "EvRealHands", seq_id, "event.aedat4"), 'wb') as f:
+                        f.write(fp.read())
     mkdir(config['exper']['output_dir'])
     # mkdir(os.path.join(config['exper']['output_dir'], 'logger'))
 
