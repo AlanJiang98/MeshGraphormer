@@ -26,7 +26,6 @@ import torchvision.models as models
 from torchvision.utils import make_grid
 import gc
 import numpy as np
-import multiprocessing as mp
 import cv2
 import copy
 import imageio
@@ -53,13 +52,15 @@ from src.utils.metric_pampjpe import reconstruction_error
 from src.utils.geometric_layers import orthographic_projection
 from src.configs.config_parser import ConfigParser
 from src.utils.metric_pampjpe import get_alignMesh, compute_similarity_transform_batch
-from fvcore.nn import FlopCountAnalysis
 import tarfile
 import shutil
 import hfai.checkpoint
 from ffrecord import PackedFolder
 import io
 
+
+import hfai_env
+hfai_env.set_env('evrgb_hfai')
 
 # from azureml.core.run import Run
 # aml_run = Run.get_context()
@@ -154,7 +155,8 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
     optimizer = torch.optim.Adam(params=list(EvRGBStereo_model.parameters()),
                                  lr=config['exper']['lr'],
                                  betas=(0.9, 0.999),
-                                 weight_decay=0.0001)
+                                 weight_decay=0)
+    
 
     # todo add scheduler
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config['exper']['num_train_epochs'])
@@ -335,7 +337,6 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
     end = time.time()
 
     batch_time = AverageMeter()
-    infer_time = AverageMeter()
 
     labels_list = ['n_f', 'n_r', 'h_f', 'h_r', 'f_f', 'f_r', 'fast']
     colors_list = ['r', 'g', 'b', 'gold', 'purple', 'cyan', 'm']
@@ -364,7 +365,6 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
     with torch.no_grad():
         for iteration, (frames, meta_data) in enumerate(val_dataloader_normal):
 
-
             if last_seq != str(meta_data[0]['seq_id'][0].item()):
                 last_seq = str(meta_data[0]['seq_id'][0].item())
                 print('Now for seq id: ', last_seq)
@@ -373,24 +373,11 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
             batch_size = frames[0]['rgb'].shape[0]
             frames = to_device(frames, device)
             meta_data = to_device(meta_data, device)
-            t_start_infer = time.time()
+
             preds, atts = EvRGBStereo_model(frames, return_att=True, decode_all=False)
-            infer_time.update(time.time() - t_start_infer, batch_size)
             batch_time.update(time.time() - end)
             end = time.time()
 
-            if iteration == 0:
-                flops = FlopCountAnalysis(EvRGBStereo_model, frames)
-                print('FLOPs: {} G FLOPs'.format(flops.total() / batch_size / 1024**3))
-                file.write('FLOPs: {} G FLOPs\n'.format(flops.total() / batch_size / 1024**3))
-                # for parameters
-                all_params = sum(p.numel() for p in EvRGBStereo_model.parameters()) / 1024.**2
-                print('Params: {} M'.format(all_params))
-                file.write('Params: {} M\n'.format(all_params))
-                if config['model']['method']['framework'] != 'eventhands':
-                    cnn_params = sum(p.numel() for p in EvRGBStereo_model.ev_backbone.parameters()) / 1024.**2
-                    print('each CNN params: {} M'.format(cnn_params))
-                    file.write('each CNN params: {} M\n'.format(cnn_params))
             for step in range(steps):
 
                 bbox_valid = meta_data[step]['bbox_valid']
@@ -596,10 +583,8 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
     #         torch.save(l_pa_mpjpe_errors, os.path.join(error_dir, 'l_pa_mpjpe_errors.pt'))
     #         torch.save(l_pa_vertices_errors, os.path.join(error_dir, 'l_pa_vertices_errors.pt'))
 
-
-    print('Inference time each item: {}'.format(infer_time.avg))
-    file.write('Inference time each item: {}\n'.format(infer_time.avg))
     file.close()
+
     total_eval_time = time.time() - start_eval_time
     total_time_str = str(datetime.timedelta(seconds=total_eval_time))
     print('Total eval time: {} ({:.4f} s / iter)'.format(
@@ -687,11 +672,6 @@ def run_eval_and_save(config, val_dataloader, EvRGBStereo_model):
         total_time_str, str(config['eval']['augment']['scale']), str(config['eval']['augment']['rot']))
     )
 
-# def write_event(seq_id_, folder, temp_path):
-#     event_path = os.path.join(seq_id_, "event.aedat4")
-#     fp = io.BytesIO(folder.read_one(event_path))
-#     with open(os.path.join(temp_path, "EvRealHands",seq_id_,"event.aedat4"), 'wb') as f:
-#         f.write(fp.read())
 
 def get_config():
     warnings.filterwarnings("ignore")
@@ -753,35 +733,10 @@ def main(config):
                 # name_list =[i for i in tar.getmembers() if i.name.endswith(".aedat4")]
                 # tar.extractall(path=temp_path, members=name_list)
                 seq_ids = folder.list("")
-            # def write_event(seq_id_):
-            #     event_path = os.path.join(seq_id_, "event.aedat4")
-            #     fp = io.BytesIO(folder.read_one(event_path))
-            #     with open(os.path.join(temp_path, "EvRealHands",seq_id_,"event.aedat4"), 'wb') as f:
-            #         f.write(fp.read())
-            # pool = mp.Pool(mp.cpu_count())
                 for seq_id in seq_ids:
                     if folder.is_dir(seq_id):
                         if not os.path.exists(os.path.join(temp_path, seq_id)):
                             os.makedirs(os.path.join(temp_path, "EvRealHands",seq_id))
-                            
-  
-            #         pool.apply_async(
-            #             write_event,
-            #             args=(
-            #                 seq_id,
-            #                 folder,
-            #                 temp_path,
-            #             ),
-            #         )
-
-            # pool.close()
-            # pool.join()
-            # for seq_id in seq_ids:
-            #     if folder.is_dir(seq_id):
-            #         if not os.path.exists(os.path.join(temp_path, "EvRealHands",seq_id,"event.aedat4")):
-            #             print(f"error {seq_id}")
-
-
                         event_path = os.path.join(seq_id, "event.aedat4")
                         fp = io.BytesIO(folder.read_one(event_path))
                         with open(os.path.join(temp_path, "EvRealHands",seq_id,"event.aedat4"), 'wb') as f:
@@ -807,20 +762,13 @@ def main(config):
             config['exper']['resume_checkpoint'] != 'None' and 'state_dict' not in config['exper']['resume_checkpoint']:
         # if only run eval, load checkpoint
         print("Evaluation: Loading from checkpoint {}".format(config['exper']['resume_checkpoint']))
-        if config['exper']['resume_checkpoint'].split('/')[-1] == 'model.bin':
-            _model = torch.load(config['exper']['resume_checkpoint'])
-        else:
-            _model = EvRGBStereo(config=config)
-            state_dict = torch.load(config['exper']['resume_checkpoint'])
-            _model.load_state_dict(state_dict, strict=False)
-            del state_dict
-            gc.collect()
-            torch.cuda.empty_cache()
+        _model = torch.load(config['exper']['resume_checkpoint'])
+
     else:
 
         # build network
         _model = EvRGBStereo(config=config)
-
+        
         if os.path.exists(os.path.join(config['exper']['output_dir'], 'latest.ckpt')):
             print("Loading from recent...")
             latest_dict = torch.load(os.path.join(config['exper']['output_dir'], 'latest.ckpt'),map_location=torch.device('cpu'))

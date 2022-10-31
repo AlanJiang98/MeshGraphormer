@@ -4,6 +4,7 @@ import os.path as osp
 import numpy as np
 import torch
 import json
+import shutil
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset
 import multiprocessing as mp
@@ -11,13 +12,14 @@ import matplotlib.pyplot as plt
 import roma
 from src.utils.dataset_utils import json_read, extract_data_from_aedat4, undistortion_points, event_representations
 from src.utils.joint_indices import indices_change
-import albumentations as A
+# import albumentations as A
 from src.configs.config_parser import ConfigParser
 from smplx import MANO
 from src.utils.augment import PhotometricAug
 from src.utils.comm import is_main_process
 from scipy.interpolate import interp1d
-
+from PIL import Image
+import pdb
 
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import (
@@ -29,6 +31,9 @@ from pytorch3d.renderer import (
     TexturesVertex
 )
 from pytorch3d.utils import cameras_from_opencv_projection
+import io
+import tarfile
+from ffrecord import PackedFolder
 
 
 def collect_data(data_seq):
@@ -38,13 +43,37 @@ def collect_data(data_seq):
     for key in data_seq.keys():
         data_seqs[key] = data_seq[key]
 
+def collect_image(data_seq):
+    global img_dict
+    if data_seq == {}:
+        return
+    for key in data_seq.keys():
+        img_dict[key] = data_seq[key]
+
 
 class EvRealHands(Dataset):
     def __init__(self, config):
         self.config = config
         self.data = {}
         self.data_config = None
+        self.tar = None
+        # if "ffr" in self.config['data']['dataset_info']['evrealhands']['data_dir']:
+        #     self.ffr = PackedFolder(self.config['data']['dataset_info']['evrealhands']['data_dir'])
+        # untat files for later usage
+        self.folder = PackedFolder(self.config['data']['dataset_info']['evrealhands']['ffr_dir'])
+        # self.tar = tarfile.open(self.config['data']['dataset_info']['evrealhands']['data_dir'],"r")
+        self.tar_name = "self.config['data']['dataset_info']['evrealhands']['data_dir']"
+        self.temp_path = os.path.join(os.getcwd(), 'temp')
+        
+        # self.image_list = [i for i in self.tar.getnames() if i.endswith(".jpg")]
+        # print(f"total image num {len(self.image_list)}")
+        
+        # self.load_images()
+        # self.img_dict = img_dict
+        # self.img_dict = {}
         self.load_events_annotations()
+        # print(f"load {len(self.img_dict.keys())} images")
+        # pdb.set_trace()
         self.process_samples()
         self.mano_layer = MANO(self.config['data']['smplx_path'], use_pca=False, is_rhand=True)
         self.rgb_augment = PhotometricAug(self.config['exper']['augment']['rgb_photometry'], not self.config['exper']['run_eval_only'])
@@ -52,17 +81,51 @@ class EvRealHands(Dataset):
         self.get_bbox_inter_f()
         self.normalize_img = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                                   std=[0.229, 0.224, 0.225])
+        # remove tempfolder after usage
+        # shutil.rmtree(self.temp_path)
         if is_main_process():
             print('EvRealHands length is ', self.__len__())
         pass
 
-    @staticmethod
-    def get_events_annotations_per_sequence(dir, is_train=True, is_fast=False):
-        if not osp.isdir(dir):
-            raise FileNotFoundError('illegal directions for event sequence: {}'.format(dir))
-        id = dir.split('/')[-1]
-        annot = json_read(os.path.join(dir, 'annot.json'))
+    # def ffr_data_converter(self, path):
+    #     data = self.ffr.read([path])
+    #     return data[0]
+    # @staticmethod
+    # def load_seq_image_to_dataset(tar_name, path):
+    #     print(f"loading {path}")
+    #     tar = tarfile.open(tar_name,"r")
+    #     data = {}
+    #     image_list = [i for i in tar.getnames() if i.endswith(".jpg") and i.startswith(path+'/')]
+    #     for name in image_list:
+    #         # print(name)
+    #         # img = tar.extractfile(name)
+    #         img = Image.open(tar.extractfile(name))
+    #         img = np.array(img)
+    #         data[name]=img
+    #     return data
+    
+    def load_images(self):
+        pool = mp.Pool(9)
+        for name in self.image_list:
+            pool.apply_async(EvRealHands.load_image_to_dataset,
+                            args=(self.tar_name, name,),
+                            callback=collect_image)
+        pool.close()
+        pool.join()
 
+    @staticmethod
+    def get_events_annotations_per_sequence(tar_name, dir, is_train=True, is_fast=False,folder=None):
+        # if not ffr.isdir(dir):
+        #     raise FileNotFoundError('illegal directions for event sequence: {}'.format(dir))
+        id = dir.split('/')[-1]
+        # print("id!!!")
+        fp = io.BytesIO(folder.read_one(f"{id}/annot.json"))
+        bytestring = fp.read()
+        annot = json.loads(bytestring.decode('utf-8'))
+        # tar = tarfile.open(tar_name,"r")
+        # annot = json.load(tar.extractfile(os.path.join("EvRealHands", id, 'annot.json')))
+        # tar.close()
+        # pdb.set_trace()
         if is_train and not (annot['motion_type'] == 'fast'):
             mano_ids = [int(id) for id in annot['manos'].keys()]
         elif not is_train:
@@ -109,8 +172,8 @@ class EvRealHands(Dataset):
             'event': events,
             'annot': annot,
         }
-        if is_main_process():
-            print('Seq {} is over!'.format(dir))
+        # if is_main_process():
+        print('Seq {} is over!'.format(dir))
         return data
 
     def load_events_annotations(self):
@@ -119,9 +182,12 @@ class EvRealHands(Dataset):
         else:
             data_config = ConfigParser(self.config['data']['dataset_info']['evrealhands']['train_yaml'])
         self.data_config = data_config.config
-        all_sub_2_seq_ids = json_read(
-            osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], self.data_config['seq_ids_path'])
-        )
+        fp = io.BytesIO(self.folder.read_one(self.data_config['seq_ids_path']))
+        bytestring = fp.read()
+        all_sub_2_seq_ids = json.loads(bytestring.decode('utf-8'))
+        # all_sub_2_seq_ids =  json.load(self.tar.extractfile(osp.join("EvRealHands", self.data_config['seq_ids_path'])))
+        # pdb.set_trace()
+        
         self.seq_ids = []
         for sub_id in self.data_config['sub_ids']:
             self.seq_ids += all_sub_2_seq_ids[str(sub_id)]
@@ -131,22 +197,34 @@ class EvRealHands(Dataset):
             else:
                 seq_ids = ['41', '18']#['24', '18']
             for seq_id in seq_ids:
-                data = self.get_events_annotations_per_sequence(osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id),
-                                                            not self.config['exper']['run_eval_only'], self.config['eval']['fast'])
+                data = self.get_events_annotations_per_sequence( self.tar_name, osp.join(self.temp_path,"EvRealHands" ,seq_id),
+                                                            not self.config['exper']['run_eval_only'], self.config['eval']['fast'], self.folder)
                 self.data.update(data)
+                # img_dict_data = self.load_seq_image_to_dataset( self.tar_name, osp.join("EvRealHands" ,seq_id))
+                # self.img_dict.update(img_dict_data)
             self.seq_ids = seq_ids
         else:
             global data_seqs
             data_seqs = {}
+            # global img_dict
+            # img_dict = {}
             pool = mp.Pool(mp.cpu_count())
             for seq_id in self.seq_ids:
                 pool.apply_async(EvRealHands.get_events_annotations_per_sequence,
-                                 args=(osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id),
-                                       not self.config['exper']['run_eval_only'], self.config['eval']['fast'],),
+                                 args=(self.tar_name, osp.join(self.temp_path,"EvRealHands" ,seq_id),
+                                       not self.config['exper']['run_eval_only'], self.config['eval']['fast'],self.folder,),
                                  callback=collect_data)
+                # pool.apply_async(EvRealHands.load_seq_image_to_dataset,
+                #             args=(self.tar_name, osp.join("EvRealHands" ,seq_id),),
+                #             callback=collect_image)
             pool.close()
             pool.join()
+            # for seq_id in self.seq_ids:
+            #     data = self.get_events_annotations_per_sequence( self.tar, osp.join(self.temp_path,"EvRealHands" ,seq_id),
+            #                                                 not self.config['exper']['run_eval_only'], self.config['eval']['fast'])
+            #     self.data.update(data)
             self.data = data_seqs
+            # self.img_dict = img_dict
         # todo
         # add challenging scenes for supervision
         # if self.config['exper']['supervision'] and not self.config['exper']['run_eval_only']:
@@ -194,12 +272,17 @@ class EvRealHands(Dataset):
         return seq_id, cam_pair, annot_id
 
     def load_img(self, path, order='RGB'):
-        img = cv2.imread(path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
-        if not isinstance(img, np.ndarray):
-            raise IOError("Fail to read %s" % path)
+        # img = cv2.imread(path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
+        # pdb.set_trace()
+        # with tarfile.open(self.tar_name) as tar:
+        #     img = np.array(Image.open(tar.extractfile(path)))
+        # if not isinstance(img, np.ndarray):
+        #     raise IOError("Fail to read %s" % path)
+        fp = io.BytesIO(self.folder.read_one(path))
+        img = cv2.imdecode(np.frombuffer(fp.read(), np.uint8), cv2.IMREAD_COLOR)
         if order == 'RGB':
             img = img[:, :, ::-1].copy()
-
+        # img = self.img_dict[path]
         img = img.astype(np.float32)
         return img
 
@@ -649,8 +732,12 @@ class EvRealHands(Dataset):
             else:
                 segments = self.config['exper']['preprocess']['segments']
             if str(annot_id) in self.data[seq_id]['annot']['frames'][cam_pair[1]]:
-                rgb_path = osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id, 'images', cam_pair[1],\
+                # rgb_path = osp.join("EvRealHands", seq_id, 'images', cam_pair[1],\
+                #                     'image' + str(annot_id).rjust(4, '0') + '.jpg')
+                # print(rgb_path)
+                rgb_path = osp.join(seq_id, 'images', cam_pair[1],\
                                     'image' + str(annot_id).rjust(4, '0') + '.jpg')
+                
                 rgb = self.load_img(rgb_path)
                 rgb_valid = True
             else:

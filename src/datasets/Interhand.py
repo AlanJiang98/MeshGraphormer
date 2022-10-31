@@ -12,13 +12,13 @@ import matplotlib.pyplot as plt
 import roma
 from src.utils.dataset_utils import json_read, extract_data_from_aedat4, undistortion_points, event_representations
 from src.utils.joint_indices import indices_change
-import albumentations as A
+# import albumentations as A
 from src.configs.config_parser import ConfigParser
 from smplx import MANO
 from src.utils.augment import PhotometricAug
 from src.utils.comm import is_main_process
 from scipy.interpolate import interp1d
-
+from PIL import Image
 
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import (
@@ -30,20 +30,46 @@ from pytorch3d.renderer import (
     TexturesVertex
 )
 from pytorch3d.utils import cameras_from_opencv_projection
+import io
+import tarfile
+from ffrecord import PackedFolder
+import pdb
+import zipfile
 
+def collect_data(data):
+    global samples, bbox_inter_f,img_dict,event_dict
+    for key in data[0].keys():
+        samples[key] = data[0][key]
+    for key in data[1].keys():
+        bbox_inter_f[key] = data[1][key]
+    # for key in data[2].keys():
+    #     img_dict[key] = data[2][key]
+    for key in data[2].keys():
+        event_dict[key] = data[2][key]
 
-# def collect_data(data):
-#     global samples, bbox_inter_f
-#     for key in data[0].keys():
-#         samples[key] = data[0][key]
-#     for key in data[1].keys():
-#         bbox_inter_f[key] = data[1][key]
+# def collect_image(data_seq):
+#     global img_dict
+#     if data_seq == {}:
+#         return
+#     for key in data_seq.keys():
+#         img_dict[key] = data_seq[key]
 
+# def collect_event(data_seq):
+#     global event_dict
+#     if data_seq == {}:
+#         return
+#     for key in data_seq.keys():
+#         event_dict[key] = data_seq[key]
 
 class Interhand(Dataset):
     def __init__(self, config):
         self.config = config
         self.data_config = None
+        self.tar_name = "self.config['data']['dataset_info']['interhand']['data_dir']"
+        # self.tar = tarfile.open(self.config['data']['dataset_info']['interhand']['data_dir'])
+        # self.img_dict = {}
+        self.event_dict = {}
+        self.folder = PackedFolder(self.config['data']['dataset_info']['interhand']['ffr_dir'])
         self.load_annotations()
         self.process_samples()
         self.mano_layer = MANO(self.config['data']['smplx_path'], use_pca=False, is_rhand=True)
@@ -53,6 +79,7 @@ class Interhand(Dataset):
                                             not self.config['exper']['run_eval_only'])
         self.normalize_img = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                                   std=[0.229, 0.224, 0.225])
+        
         if is_main_process():
             print('Interhand length is ', self.__len__())
 
@@ -62,16 +89,24 @@ class Interhand(Dataset):
         else:
             data_config = ConfigParser(self.config['data']['dataset_info']['interhand']['train_yaml'])
         self.data_config = data_config.config
-        mano_params = json_read(osp.join(self.config['data']['dataset_info']['interhand']['data_dir'], self.data_config['mano_path']))
-        joint_params = json_read(osp.join(self.config['data']['dataset_info']['interhand']['data_dir'], self.data_config['joint_path']))
-        cam_params = json_read(osp.join(self.config['data']['dataset_info']['interhand']['data_dir'], self.data_config['cam_path']))
+        params = self.folder.read([self.data_config['mano_path'],self.data_config['joint_path'],self.data_config['cam_path']])
+        fps = [(io.BytesIO(i)).read() for i in params]
+        mano_params = json.loads(fps[0].decode('utf-8'))
+        joint_params = json.loads(fps[1].decode('utf-8'))
+        cam_params = json.loads(fps[2].decode('utf-8'))
+        # fp = io.BytesIO(folder.read_one("0/annot.json"))
+        # bytestring = fp.read([self.data_config['mano_path'],self.data_config['joint_path'],self.data_config['cam_path']])
+        # result = json.loads(bytestring.decode('utf-8'))
+        # mano_params = json.load(self.tar.extractfile(osp.join("Interhand", self.data_config['mano_path'])))
+        # joint_params = json.load(self.tar.extractfile(osp.join("Interhand", self.data_config['joint_path'])))
+        # cam_params = json.load(self.tar.extractfile(osp.join("Interhand", self.data_config['cam_path'])))
         self.data = {
             'mano': mano_params,
             'joint3d': joint_params,
             'cam': cam_params
         }
         self.get_synthetic_affine_matrix()
-        self.ges_list = os.listdir(osp.join(self.config['data']['dataset_info']['interhand']['data_dir'], self.data_config['event_dir'], 'Capture0'))
+        self.ges_list = self.folder.list((osp.join(self.data_config['event_dir'], 'Capture0')))
         self.ges_list.sort()
 
     def get_synthetic_affine_matrix(self):
@@ -85,30 +120,71 @@ class Interhand(Dataset):
                                  [davis_width / 2 - 1, davis_height - 1]])
         affine_matrix = cv2.getAffineTransform(src_points, dst_points)
         self.K_affine = np.concatenate([affine_matrix, np.array([[0, 0, 1.0]])], axis=0)
-
+    # @staticmethod
+    # def load_seq_image_to_dataset(tar_name, image_list):
+    #     # print(f"loading {path}")
+    #     tar = tarfile.open(tar_name,"r")
+    #     data = {}
+    #     # image_list = [i for i in tar.getnames() if i.endswith(".jpg") and i.startswith(path+'/')]
+    #     for name in image_list:
+    #         # print(name)
+    #         # img = tar.extractfile(name)
+    #         img = Image.open(tar.extractfile(name))
+    #         img = np.array(img)
+    #         data[name]=img
+    #     return data
+    
     @staticmethod
-    def get_samples_per_cap(data, config, data_config, ges_list, cap_id):
+    def get_samples_per_cap(data, tar_name, config, data_config, ges_list, cap_id, folder=None):
         if is_main_process():
             print('Process cap {} start!'.format(cap_id))
-        cap_ev_dir = osp.join(config['data']['dataset_info']['interhand']['data_dir'], data_config['event_dir'], 'Capture' + cap_id)
-        ges_list_ = os.listdir(cap_ev_dir)
+        # tar = tarfile.open(tar_name)
+        cap_ev_dir = osp.join(data_config['event_dir'], 'Capture' + cap_id)
+        # ges_list_ = [i.split('/')[-1] for i in tar.getnames() if i.startswith(osp.join(cap_ev_dir,'0')) and "cam" not in i]
+        ges_list_ = folder.list((osp.join(data_config['event_dir'], 'Capture0')))
         ges_list_.sort()
+        # npz_list = [i for i in tar.getnames() if i.endswith('.npz')]
         samples = []
         bbox_inter_f_cap = {}
+        ev_list_ = {}
+        # img_list_ = {}
         for ges in ges_list_:
+            # pdb.set_trace()
             if ges in ges_list:
                 ges_index = ges_list.index(ges)
+                # print(ges)
                 for pair_id, cam_pair in enumerate(data_config['camera_pairs']):
-                    if osp.exists(osp.join(cap_ev_dir, ges, 'cam' + cam_pair[0], 'events.npz')):
-                        img_dir_ = osp.join(config['data']['dataset_info']['interhand']['data_dir'], data_config['img_dir'], \
+                    # print(pair_id)
+                    ev_path = osp.join(cap_ev_dir, ges, 'cam' + cam_pair[0], 'events.npz')
+                    # if ev_path in npz_list:
+                    if folder.exists(ev_path):
+                        # ev_path = osp.join("Interhand", ev_path)
+                        # events = np.load(tar.extractfile(ev_path))
+                        # events = events['events']
+                        fp = io.BytesIO(folder.read_one(ev_path))
+
+                        # kwargs['allowZip64'] = True
+                        np_file = zipfile.ZipFile(fp,allowZip64=True)
+                        with np_file.open('events.npy',"r") as myfile:
+                            events = np.load(myfile,allow_pickle=True)
+
+
+                        events[:, :1] = 345 - events[:, :1]
+                        events[:, 1:2] = 259 - events[:, 1:2]
+                        ev_list_[ev_path] = events
+
+                        img_dir_ = osp.join(data_config['img_dir'], \
                                             'Capture' + cap_id, ges, 'cam' + cam_pair[1])
-                        if not osp.exists(img_dir_):
+                        if not folder.exists(img_dir_):
                             continue
-                        img_name_list = os.listdir(img_dir_)
+                        # img_name_list = [i.split('/')[-1] for i in tar.getnames() if i.startswith(img_dir_) and "jpg" in i]
+                        img_name_list =  [i.split('/')[-1] for i in folder.list(img_dir_)]
                         img_name_list.sort()
+                        # pdb.set_trace()
                         img_id_list = [img_name[5:-4] for img_name in img_name_list]
                         img_valid_id_list = []
                         for img_id in img_id_list:
+                            # print(f"img_id: {img_id}")
                             if img_id in data['mano'][cap_id].keys() and img_id in data['joint3d'][cap_id].keys():
                                 if data['joint3d'][cap_id][img_id]['hand_type'] == 'right' \
                                         and data['joint3d'][cap_id][img_id]['hand_type_valid']:
@@ -117,64 +193,95 @@ class Interhand(Dataset):
                             continue
                         start = 24
                         for i, img_valid_id in enumerate(img_valid_id_list[start:-5]):
+                            # print(f"img_valid_id: {img_valid_id}")
                             time = (int(img_valid_id) - int(img_id_list[0])) / 90. * 1000000.
                             if int(img_valid_id_list[start + i + 2]) - int(img_valid_id) == 6:
                                 item = (int(cap_id), ges_index, pair_id, img_valid_id, time)
                                 samples.append(item)
-
+                        # for i, img_valid_id in enumerate(img_valid_id_list[start:]):
+                        #     img_path = osp.join(img_dir_, 'image' + img_valid_id + '.jpg')
+                        #     img = Image.open(tar.extractfile(img_path))
+                        #     img = np.array(img)
+                        #     img_list_[img_path]=img
+                        # pdb.set_trace()
                         if ges in bbox_inter_f_cap.keys():
+                            # print(list(bbox_inter_f_cap.keys()))
                             continue
                         else:
+                            # print(f"ges2: {ges}")
                             valid_ids = []
                             valid_joint3d = []
                             for img_id in img_id_list:
+                                # print(f"img_id2: {img_id}")
                                 if img_id in data['joint3d'][cap_id].keys():
+                                    # print(f"add valid id: {img_id}")
                                     valid_ids.append(int(img_id))
                                     valid_joint3d.append(copy.deepcopy(data['joint3d'][cap_id][img_id]['world_coord'][:21]))
                             ids_ = np.array(valid_ids, dtype=np.float32)
                             id_time = (ids_ - ids_[0]) / 90. * 1000000.
+                            # print("?????")
                             joint3d_ = np.array(valid_joint3d, dtype=np.float32)[:, indices_change(0, 1)] / 1000.
-                            bbox_inter_f_ = interp1d(id_time, joint3d_, axis=0, kind='cubic')
+                            # print("stop here?")
+                            # print(id_time.shape, joint3d_.shape)
+                            # print(id_time)
+                            # print(joint3d_)
+                            # np.save("id_time.npy", id_time)
+                            # np.save("joint3d_.npy", joint3d_)
+                            bbox_inter_f_ = interp1d(id_time, joint3d_, axis=0, kind='linear')
+                            # print("?")
                             bbox_inter_f_cap[ges] = bbox_inter_f_
+                            # print(f"finish ges: {ges}, imagepair: {pair_id}")
         if is_main_process():
             print('Process cap {} over!'.format(cap_id))
-        return [{cap_id: samples}, {cap_id: bbox_inter_f_cap}]
+        return [{cap_id: samples}, {cap_id: bbox_inter_f_cap},{cap_id: ev_list_}]
 
     def process_samples(self):
         self.samples = []
         self.bbox_inter = {}
-        valid_cap_ids = os.listdir(osp.join(self.config['data']['dataset_info']['interhand']['data_dir'], self.data_config['event_dir']))
+        valid_cap_ids = self.folder.list( self.data_config['event_dir'])
+        # valid_cap_ids = [i.split('/')[-1] for i in self.tar.getnames() if i.startswith(osp.join("Interhand", self.data_config['event_dir'],'Capture')) and "00" not in i]
+        # valid_cap_ids = os.listdir(osp.join(self.config['data']['dataset_info']['interhand']['data_dir'], self.data_config['event_dir']))
         valid_cap_ids.sort()
+        # pdb.set_trace()
         if self.config['exper']['debug']:
-            cap_id = '2'
-            data_ = self.get_samples_per_cap(self.data, self.config, self.data_config, self.ges_list, cap_id)
+            cap_id = '3'
+            data_ = self.get_samples_per_cap(self.data, self.tar_name, self.config, self.data_config, self.ges_list, cap_id,self.folder)
             self.samples += data_[0][cap_id]
             self.bbox_inter[cap_id] = data_[1][cap_id]
+            # self.img_dict.update(data_[2][cap_id])
+            self.event_dict.update(data_[2][cap_id])
+            # pdb.set_trace()
         else:
-            # global samples, bbox_inter_f
+            global samples
+            global bbox_inter_f
+            global img_dict
+            global event_dict
             samples = {}
             bbox_inter_f = {}
-            # pool = mp.Pool(mp.cpu_count())
-            # for cap_id in self.data_config['cap_ids']:
-            #     if 'Capture'+str(cap_id) in valid_cap_ids:
-            #         cap_id = str(cap_id)
-            #         pool.apply_async(
-            #             Interhand.get_samples_per_cap,
-            #             args=(
-            #                 self.data, copy.deepcopy(self.config), copy.deepcopy(self.data_config), copy.deepcopy(self.ges_list), cap_id,
-            #             ),
-            #             callback=collect_data
-            #         )
-            # pool.close()
-            # pool.join()
+            img_dict = {}
+            event_dict = {}
+            pool = mp.Pool(9)
             for cap_id in self.data_config['cap_ids']:
                 if 'Capture'+str(cap_id) in valid_cap_ids:
                     cap_id = str(cap_id)
-                    # if self.config['exper']['supervision'] and int(cap_id) not in self.data_config['super_ids']:
-                    #     continue
-                    data_ = self.get_samples_per_cap(self.data, self.config, self.data_config, self.ges_list, cap_id)
-                    self.samples += data_[0][cap_id]
-                    self.bbox_inter[cap_id] = data_[1][cap_id]
+                    pool.apply_async(
+                        Interhand.get_samples_per_cap,
+                        args=(
+                            self.data, self.tar_name, copy.deepcopy(self.config), copy.deepcopy(self.data_config), copy.deepcopy(self.ges_list), cap_id, self.folder,
+                        ),
+                        callback=collect_data
+                    )
+            pool.close()
+            pool.join()
+            # for cap_id in self.data_config['cap_ids']:
+            #     if 'Capture'+str(cap_id) in valid_cap_ids:
+            #         cap_id = str(cap_id)
+            #         # if self.config['exper']['supervision'] and int(cap_id) not in self.data_config['super_ids']:
+            #         #     continue
+            #         data_ = self.get_samples_per_cap(self.data, self.tar_name, self.config, self.data_config, self.ges_list, cap_id)
+            #         # pdb.set_trace()
+            #         self.samples += data_[0][cap_id]
+            #         self.bbox_inter[cap_id] = data_[1][cap_id]
             # sample_keys = list(samples.keys())
             # if self.config['exper']['supervision']:
             #     for cap_id in sample_keys:
@@ -185,8 +292,20 @@ class Interhand(Dataset):
             # for cap_id in cap_id_list:
             #     self.samples += samples[cap_id]
             #     self.bbox_inter[cap_id] = bbox_inter_f[cap_id]
+            for cap_id in self.data_config['cap_ids']:
+                if 'Capture'+str(cap_id) in valid_cap_ids:
+                    cap_id = str(cap_id)
+                    # if self.config['exper']['supervision'] and int(cap_id) not in self.data_config['super_ids']:
+                    #     continue
+                    # data_ = self.get_samples_per_cap(self.data, self.tar_name, self.config, self.data_config, self.ges_list, cap_id)
+                    # pdb.set_trace()
+                    self.samples += samples[cap_id]
+                    self.bbox_inter[cap_id] = bbox_inter_f[cap_id]
+                    # self.img_dict.update(img_dict[cap_id])
+                    self.event_dict.update(event_dict[cap_id])
             if is_main_process():
                 print('All the sequences for Interhand items: {}'.format(len(self.samples)))
+                # print(f"img_dict: {len(self.img_dict)}, event_dict: {len(self.event_dict)}")
 
     def get_camera_params(self, cap_id, cam_id, is_event=True):
         cam_param = self.data['cam'][cap_id]
@@ -283,7 +402,11 @@ class Interhand(Dataset):
         return index_l+indices[0], index_r+indices[0]
 
     def load_img(self, path, order='RGB'):
-        img = cv2.imread(path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
+        # img = cv2.imread(path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
+        # with tarfile.open(self.tar_name) as tar:
+        #     img = np.array(Image.open(tar.extractfile(path)))
+        fp = io.BytesIO(self.folder.read_one(path))
+        img = cv2.imdecode(np.frombuffer(fp.read(), np.uint8), cv2.IMREAD_COLOR)
         if not isinstance(img, np.ndarray):
             raise IOError("Fail to read %s" % path)
         if order == 'RGB':
@@ -629,25 +752,34 @@ class Interhand(Dataset):
 
         for step in range(steps):
             meta_data = self.get_annotations(str(cap_id), self.data_config['camera_pairs'][pair_id], img_id)
-            events = np.load(osp.join(self.config['data']['dataset_info']['interhand']['data_dir'], \
-                                      self.data_config['event_dir'], \
-                                      'Capture' + str(cap_id),
-                                      self.ges_list[ges_index], \
-                                      'cam' + self.data_config['camera_pairs'][pair_id][0],
-                                      'events.npz'
-                                      ))
-            events = events['events']
-            events[:, :1] = 345 - events[:, :1]
-            events[:, 1:2] = 259 - events[:, 1:2]
+            # with tarfile.open(self.tar_name) as tar:
+            #     events = np.load(tar.extractfile(osp.join("Interhand", \
+            #                             self.data_config['event_dir'], \
+            #                             'Capture' + str(cap_id),
+            #                             self.ges_list[ges_index], \
+            #                             'cam' + self.data_config['camera_pairs'][pair_id][0],
+            #                             'events.npz'
+            #                             )))
+            #     events = events['events']
+            #     events[:, :1] = 345 - events[:, :1]
+            #     events[:, 1:2] = 259 - events[:, 1:2]
+            events = self.event_dict[osp.join(self.data_config['event_dir'], \
+                                        'Capture' + str(cap_id),
+                                        self.ges_list[ges_index], \
+                                        'cam' + self.data_config['camera_pairs'][pair_id][0],
+                                        'events.npz'
+                                        )]
 
             if step == 0:
                 segments = 1
             else:
                 segments = self.config['exper']['preprocess']['segments']
 
-            rgb_path = osp.join(self.config['data']['dataset_info']['interhand']['data_dir'], self.data_config['img_dir'],\
+            rgb_path = osp.join( self.data_config['img_dir'],\
                                 'Capture'+str(cap_id), self.ges_list[ges_index], \
                                 'cam'+self.data_config['camera_pairs'][pair_id][1], 'image'+img_id+'.jpg')
+            # if rgb_path == "Interhand/train/Capture1/0026_four_count/cam400053/image11075.jpg":
+            #     pdb.set_trace()
             rgb = self.load_img(rgb_path)
             rgb_valid = True
             meta_data['rgb_valid'] = rgb_valid
