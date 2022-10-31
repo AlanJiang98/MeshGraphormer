@@ -175,8 +175,8 @@ class Interhand(Dataset):
 
                         img_dir_ = osp.join(data_config['img_dir'], \
                                             'Capture' + cap_id, ges, 'cam' + cam_pair[1])
-                        # if not osp.exists(img_dir_):
-                        #     continue
+                        if not folder.exists(img_dir_):
+                            continue
                         # img_name_list = [i.split('/')[-1] for i in tar.getnames() if i.startswith(img_dir_) and "jpg" in i]
                         img_name_list =  [i.split('/')[-1] for i in folder.list(img_dir_)]
                         img_name_list.sort()
@@ -244,7 +244,7 @@ class Interhand(Dataset):
         valid_cap_ids.sort()
         # pdb.set_trace()
         if self.config['exper']['debug']:
-            cap_id = '1'
+            cap_id = '3'
             data_ = self.get_samples_per_cap(self.data, self.tar_name, self.config, self.data_config, self.ges_list, cap_id,self.folder)
             self.samples += data_[0][cap_id]
             self.bbox_inter[cap_id] = data_[1][cap_id]

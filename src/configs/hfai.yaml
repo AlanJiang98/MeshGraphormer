@@ -1,5 +1,5 @@
 data:
-  dataset_yaml: './src/datasets/dataset.yaml'
+  dataset_yaml: './src/datasets/dataset_hfai.yaml'
   dataset: [ 'interhand','evrealhands'] #'interhand',,'evrealhands'
   smplx_path: './models/mano'
 

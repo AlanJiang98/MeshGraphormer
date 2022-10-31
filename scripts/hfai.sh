@@ -1,4 +1,4 @@
-torchrun --nproc_per_node=8 scripts/train_hfai.py \
+python -m torch.distributed.launch --nproc_per_node=8 scripts/train_hfai.py \
     --config src/configs/hfai.yaml \
     --output_dir output/hfai_test
 

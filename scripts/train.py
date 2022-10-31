@@ -26,6 +26,7 @@ import torchvision.models as models
 from torchvision.utils import make_grid
 import gc
 import numpy as np
+import multiprocessing as mp
 import cv2
 import copy
 import imageio
@@ -64,6 +65,7 @@ import io
 
 def save_latest(model, optimizer,scheduler, config, epoch,iteration,num_trial=10):
     checkpoint_path = op.join(config['exper']['output_dir'], 'latest.ckpt')
+    checkpoint_path_else = op.join(config['exper']['output_dir'], 'latest_else.ckpt')
     if not is_main_process():
         return checkpoint_path
     if not os.path.exists(config['exper']['output_dir']):
@@ -71,8 +73,15 @@ def save_latest(model, optimizer,scheduler, config, epoch,iteration,num_trial=10
     model_to_save = model.module if hasattr(model, 'module') else model
     optimizer_to_save = optimizer.module if hasattr(optimizer, 'module') else optimizer
     scheduler_to_save = scheduler.module if hasattr(scheduler, 'module') else scheduler
-    output_dict = {
+    output_dict_model = {
         'model': model_to_save.state_dict(),
+        # 'optimizer': optimizer_to_save.state_dict(),
+        # 'scheduler': scheduler_to_save.state_dict(),
+        'epoch': epoch,
+        'iteration': iteration,
+    }
+    output_dict_else = {
+        # 'model': model_to_save.state_dict(),
         'optimizer': optimizer_to_save.state_dict(),
         'scheduler': scheduler_to_save.state_dict(),
         'epoch': epoch,
@@ -80,7 +89,8 @@ def save_latest(model, optimizer,scheduler, config, epoch,iteration,num_trial=10
     }
     for i in range(num_trial):
         try:
-            torch.save(output_dict, checkpoint_path)
+            torch.save(output_dict_model, checkpoint_path)
+            torch.save(output_dict_else, checkpoint_path_else)
             print("Save latest checkpoint to {}".format(checkpoint_path))
             break
         except:
@@ -157,9 +167,9 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
     log_losses = AverageMeter()
     last_epoch = 0
     last_step = 0
-    if os.path.exists(os.path.join(config['exper']['output_dir'], 'latest.ckpt')):
+    if os.path.exists(os.path.join(config['exper']['output_dir'], 'latest_else.ckpt')):
             print("Loading from recent...")
-            latest_dict = torch.load(os.path.join(config['exper']['output_dir'], 'latest.ckpt'))
+            latest_dict = torch.load(os.path.join(config['exper']['output_dir'], 'latest_else.ckpt'))
             optimizer.load_state_dict(latest_dict["optimizer"])
             scheduler.load_state_dict(latest_dict["scheduler"])
             last_epoch = latest_dict["epoch"]
@@ -658,6 +668,11 @@ def run_eval_and_save(config, val_dataloader, EvRGBStereo_model):
         total_time_str, str(config['eval']['augment']['scale']), str(config['eval']['augment']['rot']))
     )
 
+# def write_event(seq_id_, folder, temp_path):
+#     event_path = os.path.join(seq_id_, "event.aedat4")
+#     fp = io.BytesIO(folder.read_one(event_path))
+#     with open(os.path.join(temp_path, "EvRealHands",seq_id_,"event.aedat4"), 'wb') as f:
+#         f.write(fp.read())
 
 def get_config():
     warnings.filterwarnings("ignore")
@@ -710,7 +725,7 @@ def main(config):
         )
         if is_main_process():
             temp_path = os.path.join(os.getcwd(), 'temp')
-            folder = PackedFolder("/home/wangbingxuan/hfai_dataset/EvRealHands_hfai.ffr")
+            folder = PackedFolder(config['data']['dataset_info']['evrealhands']['ffr_dir'])
             if os.path.exists(temp_path):
                 shutil.rmtree(temp_path)
             os.makedirs(temp_path)
@@ -718,14 +733,39 @@ def main(config):
             # name_list =[i for i in tar.getmembers() if i.name.endswith(".aedat4")]
             # tar.extractall(path=temp_path, members=name_list)
             seq_ids = folder.list("")
+            # def write_event(seq_id_):
+            #     event_path = os.path.join(seq_id_, "event.aedat4")
+            #     fp = io.BytesIO(folder.read_one(event_path))
+            #     with open(os.path.join(temp_path, "EvRealHands",seq_id_,"event.aedat4"), 'wb') as f:
+            #         f.write(fp.read())
+            # pool = mp.Pool(mp.cpu_count())
             for seq_id in seq_ids:
                 if folder.is_dir(seq_id):
                     if not os.path.exists(os.path.join(temp_path, seq_id)):
                         os.makedirs(os.path.join(temp_path, "EvRealHands",seq_id))
-                    event_path = os.path.join(seq_id, "event.aedat4")
-                    fp = io.BytesIO(folder.read_one(event_path))
-                    with open(os.path.join(temp_path, "EvRealHands",seq_id,"event.aedat4"), 'wb') as f:
-                        f.write(fp.read())
+                        
+  
+            #         pool.apply_async(
+            #             write_event,
+            #             args=(
+            #                 seq_id,
+            #                 folder,
+            #                 temp_path,
+            #             ),
+            #         )
+
+            # pool.close()
+            # pool.join()
+            # for seq_id in seq_ids:
+            #     if folder.is_dir(seq_id):
+            #         if not os.path.exists(os.path.join(temp_path, "EvRealHands",seq_id,"event.aedat4")):
+            #             print(f"error {seq_id}")
+
+
+                        event_path = os.path.join(seq_id, "event.aedat4")
+                        fp = io.BytesIO(folder.read_one(event_path))
+                        with open(os.path.join(temp_path, "EvRealHands",seq_id,"event.aedat4"), 'wb') as f:
+                            f.write(fp.read())
 
         synchronize()
 
