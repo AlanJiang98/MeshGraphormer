@@ -710,19 +710,22 @@ def main(config):
         )
         if is_main_process():
             temp_path = os.path.join(os.getcwd(), 'temp')
-            # folder = PackedFolder("/home/wangbingxuan/hfai_dataset/EvRealHands_hfai.ffr")
+            folder = PackedFolder("/home/wangbingxuan/hfai_dataset/EvRealHands_hfai.ffr")
             if os.path.exists(temp_path):
                 shutil.rmtree(temp_path)
-            # os.makedirs(temp_path)
-            tar = tarfile.open(config['data']['dataset_info']['evrealhands']['data_dir'],"r")
-            name_list =[i for i in tar.getmembers() if i.name.endswith(".aedat4")]
-            tar.extractall(path=temp_path, members=name_list)
-            # seq_ids = folder.list("")
-            # for seq_id in seq_ids:
-            #     event_path = os.path.join(seq_id, "event.aedat4")
-            #     fp = io.BytesIO(folder.read_one(event_path))
-            #     with open(os.path.join(temp_path, seq_id+".aedat4"), 'wb') as f:
-            #         f.write(fp.read())
+            os.makedirs(temp_path)
+            # tar = tarfile.open(config['data']['dataset_info']['evrealhands']['data_dir'],"r")
+            # name_list =[i for i in tar.getmembers() if i.name.endswith(".aedat4")]
+            # tar.extractall(path=temp_path, members=name_list)
+            seq_ids = folder.list("")
+            for seq_id in seq_ids:
+                if folder.is_dir(seq_id):
+                    if not os.path.exists(os.path.join(temp_path, seq_id)):
+                        os.makedirs(os.path.join(temp_path, "EvRealHands",seq_id))
+                    event_path = os.path.join(seq_id, "event.aedat4")
+                    fp = io.BytesIO(folder.read_one(event_path))
+                    with open(os.path.join(temp_path, "EvRealHands",seq_id,"event.aedat4"), 'wb') as f:
+                        f.write(fp.read())
 
         synchronize()
 

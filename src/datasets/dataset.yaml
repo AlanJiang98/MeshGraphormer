@@ -9,12 +9,12 @@
 #   eval_yaml: './src/datasets/evrealhands/eval.yaml'
 #   ffr_dir: "/private_dataset/evrgb_hand/EvRealHands_hfai.ffr"
 interhand:
-  data_dir: "/home/wangbingxuan/Interhand.tar"
+  data_dir: "/home/wangbingxuan/temp/Interhand.tar"
   train_yaml: './src/datasets/interhand/train.yaml'
   eval_yaml: './src/datasets/interhand/eval.yaml'
   ffr_dir: "/home/wangbingxuan/hfai_dataset/Interhand_hfai.ffr"
 evrealhands:
-  data_dir: "/home/wangbingxuan/EvRealHands.tar"
+  data_dir: "/home/wangbingxuan/temp/EvRealHands.tar"
   train_yaml: './src/datasets/evrealhands/train.yaml'
   eval_yaml: './src/datasets/evrealhands/eval.yaml'
   ffr_dir: "/home/wangbingxuan/hfai_dataset/EvRealHands_hfai.ffr"

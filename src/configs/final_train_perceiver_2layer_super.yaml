@@ -35,7 +35,7 @@ model:
 
 
 exper:
-  debug: True
+  debug: False
   run_eval_only: False
   resume_checkpoint: None
   num_workers: 4

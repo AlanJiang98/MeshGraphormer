@@ -61,8 +61,8 @@ class EvRealHands(Dataset):
         #     self.ffr = PackedFolder(self.config['data']['dataset_info']['evrealhands']['data_dir'])
         # untat files for later usage
         self.folder = PackedFolder(self.config['data']['dataset_info']['evrealhands']['ffr_dir'])
-        self.tar = tarfile.open(self.config['data']['dataset_info']['evrealhands']['data_dir'],"r")
-        self.tar_name = self.config['data']['dataset_info']['evrealhands']['data_dir']
+        # self.tar = tarfile.open(self.config['data']['dataset_info']['evrealhands']['data_dir'],"r")
+        self.tar_name = "self.config['data']['dataset_info']['evrealhands']['data_dir']"
         self.temp_path = os.path.join(os.getcwd(), 'temp')
         
         # self.image_list = [i for i in self.tar.getnames() if i.endswith(".jpg")]
@@ -90,19 +90,19 @@ class EvRealHands(Dataset):
     # def ffr_data_converter(self, path):
     #     data = self.ffr.read([path])
     #     return data[0]
-    @staticmethod
-    def load_seq_image_to_dataset(tar_name, path):
-        print(f"loading {path}")
-        tar = tarfile.open(tar_name,"r")
-        data = {}
-        image_list = [i for i in tar.getnames() if i.endswith(".jpg") and i.startswith(path+'/')]
-        for name in image_list:
-            # print(name)
-            # img = tar.extractfile(name)
-            img = Image.open(tar.extractfile(name))
-            img = np.array(img)
-            data[name]=img
-        return data
+    # @staticmethod
+    # def load_seq_image_to_dataset(tar_name, path):
+    #     print(f"loading {path}")
+    #     tar = tarfile.open(tar_name,"r")
+    #     data = {}
+    #     image_list = [i for i in tar.getnames() if i.endswith(".jpg") and i.startswith(path+'/')]
+    #     for name in image_list:
+    #         # print(name)
+    #         # img = tar.extractfile(name)
+    #         img = Image.open(tar.extractfile(name))
+    #         img = np.array(img)
+    #         data[name]=img
+    #     return data
     
     def load_images(self):
         pool = mp.Pool(9)
@@ -114,14 +114,17 @@ class EvRealHands(Dataset):
         pool.join()
 
     @staticmethod
-    def get_events_annotations_per_sequence(tar_name, dir, is_train=True, is_fast=False):
+    def get_events_annotations_per_sequence(tar_name, dir, is_train=True, is_fast=False,folder=None):
         # if not ffr.isdir(dir):
         #     raise FileNotFoundError('illegal directions for event sequence: {}'.format(dir))
         id = dir.split('/')[-1]
         # print("id!!!")
-        tar = tarfile.open(tar_name,"r")
-        annot = json.load(tar.extractfile(os.path.join("EvRealHands", id, 'annot.json')))
-        tar.close()
+        fp = io.BytesIO(folder.read_one(f"{id}/annot.json"))
+        bytestring = fp.read()
+        annot = json.loads(bytestring.decode('utf-8'))
+        # tar = tarfile.open(tar_name,"r")
+        # annot = json.load(tar.extractfile(os.path.join("EvRealHands", id, 'annot.json')))
+        # tar.close()
         # pdb.set_trace()
         if is_train and not (annot['motion_type'] == 'fast'):
             mano_ids = [int(id) for id in annot['manos'].keys()]
@@ -179,7 +182,10 @@ class EvRealHands(Dataset):
         else:
             data_config = ConfigParser(self.config['data']['dataset_info']['evrealhands']['train_yaml'])
         self.data_config = data_config.config
-        all_sub_2_seq_ids =  json.load(self.tar.extractfile(osp.join("EvRealHands", self.data_config['seq_ids_path'])))
+        fp = io.BytesIO(self.folder.read_one(self.data_config['seq_ids_path']))
+        bytestring = fp.read()
+        all_sub_2_seq_ids = json.loads(bytestring.decode('utf-8'))
+        # all_sub_2_seq_ids =  json.load(self.tar.extractfile(osp.join("EvRealHands", self.data_config['seq_ids_path'])))
         # pdb.set_trace()
         
         self.seq_ids = []
@@ -192,7 +198,7 @@ class EvRealHands(Dataset):
                 seq_ids = ['41', '18']#['24', '18']
             for seq_id in seq_ids:
                 data = self.get_events_annotations_per_sequence( self.tar_name, osp.join(self.temp_path,"EvRealHands" ,seq_id),
-                                                            not self.config['exper']['run_eval_only'], self.config['eval']['fast'])
+                                                            not self.config['exper']['run_eval_only'], self.config['eval']['fast'], self.folder)
                 self.data.update(data)
                 # img_dict_data = self.load_seq_image_to_dataset( self.tar_name, osp.join("EvRealHands" ,seq_id))
                 # self.img_dict.update(img_dict_data)
@@ -206,7 +212,7 @@ class EvRealHands(Dataset):
             for seq_id in self.seq_ids:
                 pool.apply_async(EvRealHands.get_events_annotations_per_sequence,
                                  args=(self.tar_name, osp.join(self.temp_path,"EvRealHands" ,seq_id),
-                                       not self.config['exper']['run_eval_only'], self.config['eval']['fast'],),
+                                       not self.config['exper']['run_eval_only'], self.config['eval']['fast'],self.folder,),
                                  callback=collect_data)
                 # pool.apply_async(EvRealHands.load_seq_image_to_dataset,
                 #             args=(self.tar_name, osp.join("EvRealHands" ,seq_id),),

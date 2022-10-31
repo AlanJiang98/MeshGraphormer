@@ -34,6 +34,7 @@ import io
 import tarfile
 from ffrecord import PackedFolder
 import pdb
+import zipfile
 
 def collect_data(data):
     global samples, bbox_inter_f,img_dict,event_dict
@@ -64,8 +65,8 @@ class Interhand(Dataset):
     def __init__(self, config):
         self.config = config
         self.data_config = None
-        self.tar_name = self.config['data']['dataset_info']['interhand']['data_dir']
-        self.tar = tarfile.open(self.config['data']['dataset_info']['interhand']['data_dir'])
+        self.tar_name = "self.config['data']['dataset_info']['interhand']['data_dir']"
+        # self.tar = tarfile.open(self.config['data']['dataset_info']['interhand']['data_dir'])
         # self.img_dict = {}
         self.event_dict = {}
         self.folder = PackedFolder(self.config['data']['dataset_info']['interhand']['ffr_dir'])
@@ -137,7 +138,7 @@ class Interhand(Dataset):
     def get_samples_per_cap(data, tar_name, config, data_config, ges_list, cap_id, folder=None):
         if is_main_process():
             print('Process cap {} start!'.format(cap_id))
-        tar = tarfile.open(tar_name)
+        # tar = tarfile.open(tar_name)
         cap_ev_dir = osp.join(data_config['event_dir'], 'Capture' + cap_id)
         # ges_list_ = [i.split('/')[-1] for i in tar.getnames() if i.startswith(osp.join(cap_ev_dir,'0')) and "cam" not in i]
         ges_list_ = folder.list((osp.join(data_config['event_dir'], 'Capture0')))
@@ -157,9 +158,17 @@ class Interhand(Dataset):
                     ev_path = osp.join(cap_ev_dir, ges, 'cam' + cam_pair[0], 'events.npz')
                     # if ev_path in npz_list:
                     if folder.exists(ev_path):
-                        ev_path = osp.join("Interhand", ev_path)
-                        events = np.load(tar.extractfile(ev_path))
-                        events = events['events']
+                        # ev_path = osp.join("Interhand", ev_path)
+                        # events = np.load(tar.extractfile(ev_path))
+                        # events = events['events']
+                        fp = io.BytesIO(folder.read_one(ev_path))
+
+                        # kwargs['allowZip64'] = True
+                        np_file = zipfile.ZipFile(fp,allowZip64=True)
+                        with np_file.open('events.npy',"r") as myfile:
+                            events = np.load(myfile,allow_pickle=True)
+
+
                         events[:, :1] = 345 - events[:, :1]
                         events[:, 1:2] = 259 - events[:, 1:2]
                         ev_list_[ev_path] = events
@@ -754,8 +763,7 @@ class Interhand(Dataset):
             #     events = events['events']
             #     events[:, :1] = 345 - events[:, :1]
             #     events[:, 1:2] = 259 - events[:, 1:2]
-            events = self.event_dict[osp.join("Interhand", \
-                                        self.data_config['event_dir'], \
+            events = self.event_dict[osp.join(self.data_config['event_dir'], \
                                         'Capture' + str(cap_id),
                                         self.ges_list[ges_index], \
                                         'cam' + self.data_config['camera_pairs'][pair_id][0],
