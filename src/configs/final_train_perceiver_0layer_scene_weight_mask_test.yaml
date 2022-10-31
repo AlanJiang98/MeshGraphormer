@@ -1,6 +1,6 @@
 data:
-  dataset_yaml: '/userhome/alanjjp/Project/MeshGraphormer/src/datasets/dataset.yaml'
-  dataset: ['evrealhands']#, 'interhand']
+  dataset_yaml:  './src/datasets/dataset.yaml'#'/userhome/alanjjp/Project/MeshGraphormer/src/datasets/dataset.yaml'
+  dataset: ['interhand']
   smplx_path: '/userhome/alanjjp/data/smplx_models/mano'
 
 model:

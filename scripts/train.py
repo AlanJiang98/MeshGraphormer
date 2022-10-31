@@ -11,7 +11,7 @@ import argparse
 import os
 from os.path import dirname
 import os.path as op
-# os.chdir('/userhome/wangbingxuan/code/MeshGraphormer')
+os.chdir('/userhome/alanjjp/Project/MeshGraphormer')
 # os.chdir(dirname(os.getcwd()))
 # import sys
 # sys.path.append(dirname(os.getcwd()))
@@ -830,8 +830,6 @@ def main(config):
             gc.collect()
             torch.cuda.empty_cache()
             print("finish loading model")
-
-
 
         if config['exper']['resume_checkpoint'] != None and config['exper']['resume_checkpoint'] != 'None':
             # for fine-tuning or resume training or inference, load weights from checkpoint
