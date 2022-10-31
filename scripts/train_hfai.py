@@ -172,7 +172,8 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
     if os.path.exists(os.path.join(config['exper']['output_dir'], 'latest_else.ckpt')):
             print("Loading from recent...")
             # device_name = torch.cuda.current_device()
-            latest_dict = torch.load(os.path.join(config['exper']['output_dir'], 'latest_else.ckpt'), map_location=torch.cuda.current_device())
+            
+            latest_dict = torch.load(os.path.join(config['exper']['output_dir'], 'latest_else.ckpt'),map_location=torch.device('cuda:%d' % int(os.environ["LOCAL_RANK"])))
             optimizer.load_state_dict(latest_dict["optimizer"])
             scheduler.load_state_dict(latest_dict["scheduler"])
             last_epoch = latest_dict["epoch"]

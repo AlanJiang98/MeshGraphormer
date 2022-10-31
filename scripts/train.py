@@ -169,7 +169,9 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
     last_step = 0
     if os.path.exists(os.path.join(config['exper']['output_dir'], 'latest_else.ckpt')):
             print("Loading from recent...")
-            latest_dict = torch.load(os.path.join(config['exper']['output_dir'], 'latest_else.ckpt'))
+            # device_name = torch.cuda.current_device()
+            
+            latest_dict = torch.load(os.path.join(config['exper']['output_dir'], 'latest_else.ckpt'),map_location=torch.device('cuda:%d' % int(os.environ["LOCAL_RANK"])))
             optimizer.load_state_dict(latest_dict["optimizer"])
             scheduler.load_state_dict(latest_dict["scheduler"])
             last_epoch = latest_dict["epoch"]
@@ -726,24 +728,25 @@ def main(config):
         if is_main_process():
             temp_path = os.path.join(os.getcwd(), 'temp')
             folder = PackedFolder(config['data']['dataset_info']['evrealhands']['ffr_dir'])
-            if os.path.exists(temp_path):
-                shutil.rmtree(temp_path)
-            os.makedirs(temp_path)
-            # tar = tarfile.open(config['data']['dataset_info']['evrealhands']['data_dir'],"r")
-            # name_list =[i for i in tar.getmembers() if i.name.endswith(".aedat4")]
-            # tar.extractall(path=temp_path, members=name_list)
-            seq_ids = folder.list("")
+            if os.path.exists(temp_path) and os.path.exists(os.path.join(temp_path, "EvRealHands",'0',"event.aedat4")):
+                pass
+            else:
+                os.makedirs(temp_path)
+                # tar = tarfile.open(config['data']['dataset_info']['evrealhands']['data_dir'],"r")
+                # name_list =[i for i in tar.getmembers() if i.name.endswith(".aedat4")]
+                # tar.extractall(path=temp_path, members=name_list)
+                seq_ids = folder.list("")
             # def write_event(seq_id_):
             #     event_path = os.path.join(seq_id_, "event.aedat4")
             #     fp = io.BytesIO(folder.read_one(event_path))
             #     with open(os.path.join(temp_path, "EvRealHands",seq_id_,"event.aedat4"), 'wb') as f:
             #         f.write(fp.read())
             # pool = mp.Pool(mp.cpu_count())
-            for seq_id in seq_ids:
-                if folder.is_dir(seq_id):
-                    if not os.path.exists(os.path.join(temp_path, seq_id)):
-                        os.makedirs(os.path.join(temp_path, "EvRealHands",seq_id))
-                        
+                for seq_id in seq_ids:
+                    if folder.is_dir(seq_id):
+                        if not os.path.exists(os.path.join(temp_path, seq_id)):
+                            os.makedirs(os.path.join(temp_path, "EvRealHands",seq_id))
+                            
   
             #         pool.apply_async(
             #             write_event,
@@ -796,7 +799,7 @@ def main(config):
 
         if os.path.exists(os.path.join(config['exper']['output_dir'], 'latest.ckpt')):
             print("Loading from recent...")
-            latest_dict = torch.load(os.path.join(config['exper']['output_dir'], 'latest.ckpt'))
+            latest_dict = torch.load(os.path.join(config['exper']['output_dir'], 'latest.ckpt'),map_location=torch.device('cpu'))
             _model.load_state_dict(latest_dict["model"])
             start_iter = latest_dict['iteration']
             del latest_dict
@@ -810,7 +813,7 @@ def main(config):
             # for fine-tuning or resume training or inference, load weights from checkpoint
             print("Loading state dict from checkpoint {}".format(config['exper']['resume_checkpoint']))
             # workaround approach to load sparse tensor in graph conv.
-            state_dict = torch.load(config['exper']['resume_checkpoint'])
+            state_dict = torch.load(config['exper']['resume_checkpoint'], map_location=torch.device('cpu'))
             _model.load_state_dict(state_dict, strict=False)
             del state_dict
             gc.collect()
