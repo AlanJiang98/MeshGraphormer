@@ -516,7 +516,7 @@ class EvRGBStereo(torch.nn.Module):
 
             stereo_features *= scene_weight
 
-            if 'mask' in self.config['model']['tfm'].keys():
+            if 'mask' in self.config['model']['tfm'].keys() and not self.config['exper']['run_eval_only']:
                 grid_mask = torch.ones((*stereo_features.shape[:2], 1), device=stereo_features.device)
                 len_rand = (torch.rand(1) * self.config['model']['tfm']['mask'] * stereo_features.shape[0]).int()
                 index = torch.randperm(stereo_features.shape[0])[:len_rand]
@@ -556,11 +556,12 @@ class EvRGBStereo(torch.nn.Module):
                 latent_2 = latent_2[start_index:]
                 pos_enc_1 = pos_enc_1[start_index:]
                 pos_enc_2 = pos_enc_2[start_index:]
-            atts += (att_, )
+
             # stereo decoder
-            pred_3d_joints_0, pred_vertices_0, pred_vertices_sub_0, att_ = infer_decode(
+            pred_3d_joints_0, pred_vertices_0, pred_vertices_sub_0, att_0 = infer_decode(
                 self.decoders, jv_tokens, [pos_enc_1, pos_enc_2], [latent_1, latent_2], return_att, self.dim_reduce_dec, attention_mask, self.xyz_regressor, self.upsampling
             )
+            atts += (att_, att_0)
 
             output.append([{
                 'pred_3d_joints': pred_3d_joints_0,
@@ -578,12 +579,12 @@ class EvRGBStereo(torch.nn.Module):
                     ev_update_features = self.conv_1x1_ev(grid_feat_ev).flatten(2).permute(2, 0, 1)
                     ev_latent_1, ev_latent_2, att_ = infer_encode(self.event_encoders, ev_update_features,
                                                             [pos_enc_ev_1, pos_enc_ev_2], return_att, self.dim_reduce_event)
-                    atts += (att_,)
 
                     latent_1, att_1 = self.perveivers[0](latent_1, ev_latent_1, self.config['model']['tfm']['iterations'],
                                                          pos_enc_ev_1, return_att)
                     latent_2, att_2 = self.perveivers[1](latent_2, ev_latent_2, self.config['model']['tfm']['iterations'],
                                                          pos_enc_ev_2, return_att)
+                    atts += ((att_,att_1, att_2), )
                     if decode_all:
                         pred_3d_joints_, pred_vertices_, pred_vertices_sub_, att_ = infer_decode(
                             self.decoders, jv_tokens, [pos_enc_1, pos_enc_2], [latent_1, latent_2], return_att,
@@ -598,11 +599,13 @@ class EvRGBStereo(torch.nn.Module):
                             output.append([res])
                         else:
                             output[i].append(res)
+                        atts += (att_)
                 if not decode_all:
-                    pred_3d_joints_, pred_vertices_, pred_vertices_sub_, att_ = infer_decode(
+                    pred_3d_joints_, pred_vertices_, pred_vertices_sub_, att_d = infer_decode(
                         self.decoders, jv_tokens, [pos_enc_1, pos_enc_2], [latent_1, latent_2], return_att,
                         self.dim_reduce_dec, attention_mask, self.xyz_regressor, self.upsampling
                     )
+                    atts += (att_d, )
                     output.append([{
                         'pred_3d_joints': pred_3d_joints_,
                         'pred_vertices': pred_vertices_,
