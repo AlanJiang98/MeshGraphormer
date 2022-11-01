@@ -1,6 +1,6 @@
 python -m torch.distributed.launch --nproc_per_node=8 scripts/train_hfai.py \
-    --config src/configs/hfai/fastmetro_rgb_aug.yaml \
-    --output_dir output/fastmetro_rgb_aug
+    --config src/configs/hfai/fastmetro_rgb_aug_mask.yaml \
+    --output_dir output/fastmetro_rgb_aug_mask
 
 
 # CUDA_VISIBLE_DEVICES=7 python scripts/train.py \
