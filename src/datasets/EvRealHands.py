@@ -194,7 +194,9 @@ class EvRealHands(Dataset):
         return seq_id, cam_pair, annot_id
 
     def load_img(self, path, order='RGB'):
-        img = cv2.imread(path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
+        #todo
+        #img = cv2.imread(path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
+        img = cv2.imread(path, cv2.IMREAD_COLOR)
         if not isinstance(img, np.ndarray):
             raise IOError("Fail to read %s" % path)
         if order == 'RGB':
@@ -383,7 +385,7 @@ class EvRealHands(Dataset):
         rt_dom = lf_top + bbox[2].int()
         if lf_top[0] < 0 or lf_top[1] < 0 or rt_dom[0] > hw[1] or rt_dom[1] > hw[0]:
             frame = cv2.copyMakeBorder(frame, - min(0, lf_top[1].item()), max(rt_dom[1].item() - hw[0], 0),
-                            -min(0, lf_top[0].item()), max(rt_dom[0].item() - hw[1], 0), cv2.BORDER_REPLICATE)
+                            -min(0, lf_top[0].item()), max(rt_dom[0].item() - hw[1], 0), cv2.BORDER_CONSTANT, value=0)# cv2.BORDER_REPLICATE) todo
             rt_dom[1] += -min(0, lf_top[1])
             lf_top[1] += -min(0, lf_top[1])
             rt_dom[0] += -min(0, lf_top[0])

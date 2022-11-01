@@ -134,7 +134,7 @@ class Interhand(Dataset):
                             ids_ = np.array(valid_ids, dtype=np.float32)
                             id_time = (ids_ - ids_[0]) / 90. * 1000000.
                             joint3d_ = np.array(valid_joint3d, dtype=np.float32)[:, indices_change(0, 1)] / 1000.
-                            bbox_inter_f_ = interp1d(id_time, joint3d_, axis=0, kind='cubic')
+                            bbox_inter_f_ = interp1d(id_time, joint3d_, axis=0, kind='linear')
                             bbox_inter_f_cap[ges] = bbox_inter_f_
         if is_main_process():
             print('Process cap {} over!'.format(cap_id))
@@ -283,7 +283,8 @@ class Interhand(Dataset):
         return index_l+indices[0], index_r+indices[0]
 
     def load_img(self, path, order='RGB'):
-        img = cv2.imread(path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
+        # img = cv2.imread(path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
+        img = cv2.imread(path, cv2.IMREAD_COLOR)
         if not isinstance(img, np.ndarray):
             raise IOError("Fail to read %s" % path)
         if order == 'RGB':
@@ -440,7 +441,7 @@ class Interhand(Dataset):
         rt_dom = lf_top + bbox[2].int()
         if lf_top[0] < 0 or lf_top[1] < 0 or rt_dom[0] > hw[1] or rt_dom[1] > hw[0]:
             frame = cv2.copyMakeBorder(frame, - min(0, lf_top[1].item()), max(rt_dom[1].item() - hw[0], 0),
-                            -min(0, lf_top[0].item()), max(rt_dom[0].item() - hw[1], 0), cv2.BORDER_REPLICATE)
+                            -min(0, lf_top[0].item()), max(rt_dom[0].item() - hw[1], 0),cv2.BORDER_CONSTANT, value=0)# cv2.BORDER_REPLICATE) todo
             rt_dom[1] += -min(0, lf_top[1])
             lf_top[1] += -min(0, lf_top[1])
             rt_dom[0] += -min(0, lf_top[0])
