@@ -279,7 +279,7 @@ class EvRealHands(Dataset):
         # if not isinstance(img, np.ndarray):
         #     raise IOError("Fail to read %s" % path)
         fp = io.BytesIO(self.folder.read_one(path))
-        img = cv2.imdecode(np.frombuffer(fp.read(), np.uint8), cv2.IMREAD_COLOR)
+        img = cv2.imdecode(np.frombuffer(fp.read(), np.uint8), cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
         if order == 'RGB':
             img = img[:, :, ::-1].copy()
         # img = self.img_dict[path]
@@ -466,7 +466,7 @@ class EvRealHands(Dataset):
         rt_dom = lf_top + bbox[2].int()
         if lf_top[0] < 0 or lf_top[1] < 0 or rt_dom[0] > hw[1] or rt_dom[1] > hw[0]:
             frame = cv2.copyMakeBorder(frame, - min(0, lf_top[1].item()), max(rt_dom[1].item() - hw[0], 0),
-                            -min(0, lf_top[0].item()), max(rt_dom[0].item() - hw[1], 0), cv2.BORDER_REPLICATE)
+                            -min(0, lf_top[0].item()), max(rt_dom[0].item() - hw[1], 0), cv2.BORDER_CONSTANT, value=0)
             rt_dom[1] += -min(0, lf_top[1])
             lf_top[1] += -min(0, lf_top[1])
             rt_dom[0] += -min(0, lf_top[0])
@@ -604,7 +604,7 @@ class EvRealHands(Dataset):
                     joints_3ds[i] = np.array(self.data[seq_id]['annot']['3d_joints'][str(id)], dtype=np.float32).reshape(-1, 3)[indices_change(2, 1)] / 1000.
 
                 # this is 3d joints bbox interpolation function
-                bbox_inter_f = interp1d(ids_timestamp, joints_3ds, axis=0, kind='cubic')
+                bbox_inter_f = interp1d(ids_timestamp, joints_3ds, axis=0, kind='linear')
                 self.bbox_inter[seq_id] = {'joints': bbox_inter_f}
 
     def get_bbox_inter_f(self):
@@ -782,22 +782,22 @@ class EvRealHands(Dataset):
                 ev_frames[i] = ev_frames[i].permute(1, 2, 0)
                 # self.plotshow(ev_frames[i])
                 pass
-            rgb = self.render_hand(
-                meta_data['mano'],
-                meta_data['K_rgb'],
-                meta_data['R_rgb'],
-                meta_data['t_rgb'],
-                hw=[920, 1064],
-                img_bg=rgb,
-            )[0]
-            ev_frames[-1] = self.render_hand(
-                meta_data['mano'],
-                meta_data['K_event'],
-                meta_data['R_event'],
-                meta_data['t_event'],
-                hw=[260, 346],
-                img_bg=ev_frames[-1],
-            )[0]
+            # rgb = self.render_hand(
+            #     meta_data['mano'],
+            #     meta_data['K_rgb'],
+            #     meta_data['R_rgb'],
+            #     meta_data['t_rgb'],
+            #     hw=[920, 1064],
+            #     img_bg=rgb,
+            # )[0]
+            # ev_frames[-1] = self.render_hand(
+            #     meta_data['mano'],
+            #     meta_data['K_event'],
+            #     meta_data['R_event'],
+            #     meta_data['t_event'],
+            #     hw=[260, 346],
+            #     img_bg=ev_frames[-1],
+            # )[0]
 
             if test_fast:
                 bbox_rgb = self.get_bbox_by_interpolation(seq_id, cam_pair[1], t_target)
@@ -844,7 +844,7 @@ class EvRealHands(Dataset):
 
 
             # self.plotshow(ev_frames_crop[-1])
-            self.plotshow(rgb_crop)
+            # self.plotshow(rgb_crop)
             tf_w_c = self.change_camera_view(meta_data)
 
             seq_type = self.get_seq_type(seq_id)

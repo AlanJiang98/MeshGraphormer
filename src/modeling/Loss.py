@@ -47,8 +47,8 @@ class Loss(torch.nn.Module):
 
     def init_criterion(self):
         # define loss function (criterion) and optimizer
-        self.criterion_2d_joints = torch.nn.L1Loss(reduction='none').cuda(self.config['exper']['device'])
-        self.criterion_3d_joints = torch.nn.L2Loss(reduction='none').cuda(self.config['exper']['device'])
+        self.criterion_2d_joints = torch.nn.MSELoss(reduction='none').cuda(self.config['exper']['device'])
+        self.criterion_3d_joints = torch.nn.MSELoss(reduction='none').cuda(self.config['exper']['device'])
         self.criterion_vertices = torch.nn.L1Loss(reduction='none').cuda(self.config['exper']['device'])
         if 'scene_weight' in self.config['model']['tfm'].keys() and self.config['model']['tfm']['scene_weight']:
             self.criterion_scene = torch.nn.CrossEntropyLoss(reduction='none', label_smoothing=self.config['exper']['loss']['label_smoothing']).cuda(self.config['exper']['device'])

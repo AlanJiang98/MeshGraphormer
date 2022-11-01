@@ -406,7 +406,7 @@ class Interhand(Dataset):
         # with tarfile.open(self.tar_name) as tar:
         #     img = np.array(Image.open(tar.extractfile(path)))
         fp = io.BytesIO(self.folder.read_one(path))
-        img = cv2.imdecode(np.frombuffer(fp.read(), np.uint8), cv2.IMREAD_COLOR)
+        img = cv2.imdecode(np.frombuffer(fp.read(), np.uint8), cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
         if not isinstance(img, np.ndarray):
             raise IOError("Fail to read %s" % path)
         if order == 'RGB':
@@ -563,7 +563,7 @@ class Interhand(Dataset):
         rt_dom = lf_top + bbox[2].int()
         if lf_top[0] < 0 or lf_top[1] < 0 or rt_dom[0] > hw[1] or rt_dom[1] > hw[0]:
             frame = cv2.copyMakeBorder(frame, - min(0, lf_top[1].item()), max(rt_dom[1].item() - hw[0], 0),
-                            -min(0, lf_top[0].item()), max(rt_dom[0].item() - hw[1], 0), cv2.BORDER_CONSTANT)
+                            -min(0, lf_top[0].item()), max(rt_dom[0].item() - hw[1], 0), cv2.BORDER_CONSTANT, value=0)
             rt_dom[1] += -min(0, lf_top[1])
             lf_top[1] += -min(0, lf_top[1])
             rt_dom[0] += -min(0, lf_top[0])
