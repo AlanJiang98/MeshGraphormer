@@ -1,26 +1,26 @@
 data:
-  dataset_yaml:  './src/datasets/dataset.yaml'
+  dataset_yaml:  './src/datasets/dataset.yaml'#'./src/datasets/dataset_hfai.yaml'
   dataset: [ 'interhand','evrealhands'] #'interhand',,'evrealhands'
-  smplx_path: '/userhome/alanjjp/data/smplx_models/mano'
+  smplx_path: './models/mano' #'/userhome/alanjjp/data/smplx_models/mano'
 
 model:
   bert_config: 'src/modeling/bert/bert-base-uncased/'
   method:
-    framework: 'encoder_decoder_based' #'encoder_decoder_based' # 'encoder_decoder_based'
-    ere_usage: [False, True, False]
+    framework: 'encoder_decoder_based' #'encoder_decoder_based' 'encoder_based' 'perceiver'
+    ere_usage: [True, True, False]
   tfm:
     scale: 'L' # 'S', 'M', 'L'
     model_dim: [512, 128]
     feedforward_dim: [1024, 256]
     pos_type: 'sine'
     nhead: 8
-    latent: 'all'
-    scene_weight: False
+    latent: 'all' # 'rgb'
+    scene_weight: True # 3.2
     n_self_att_layers: 2
     iterations: 1
-    mask: 0.2
+    mask: 0.0
     perceiver_layers: 2
-    decoder_features: [False, True, False]
+    decoder_features: [True, True, False]
     output_attentions: True
     drop_out: 0.1
     mesh_type: 'hand'
@@ -32,7 +32,7 @@ model:
     hidden_feat_dim: [ 1024,256,64 ]
     which_gcn: [ 0, 0, 1 ]
   backbone:
-    arch: 'hrnet'
+    arch: 'hrnet' #'resnet50'
     hrnet_yaml: 'models/hrnet/cls_hrnet_w64_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
     hrnet_bb: 'models/hrnet/hrnetv2_w64_imagenet_pretrained.pth'
 #    hrnet_yaml: 'models/hrnet/cls_hrnet_w40_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
@@ -59,7 +59,7 @@ exper:
     num_window: 7000
     num_var: 2000
     cam_view: 'rgb' # 'world', 'rgb', 'event
-    steps: 1
+    steps: 1 # 1 for fastmetro 3 for perceiver
     segments: 1
   augment:
     geometry:
@@ -105,14 +105,14 @@ exper:
   loss:
     vertices: 100.0
     vertices_sub: 100.0
-    3d_joints: 200.0
-    3d_joints_from_mesh: 200.0
+    3d_joints: 2000.0
+    3d_joints_from_mesh: 1000.0
     seg_rgb: 10.0
     seg_event: 10.0
     2d_joints_rgb: 50.
     2d_joints_event: 50.
-    label_smoothing: 0.1
-    scene: 10.
+    label_smoothing: 0.1 #3.2
+    scene: 10. # 3.2
 
 eval:
   fast: False
@@ -128,7 +128,7 @@ eval:
     attention_map: True
     errors: True
     rendered: True
-    vis_rendered: 'event'
+    vis_rendered: 'event' # view for visualization
 
 utils:
   logging_steps: 10

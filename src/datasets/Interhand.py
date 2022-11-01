@@ -818,22 +818,22 @@ class Interhand(Dataset):
                 ev_frames[i] = ev_frames[i].permute(1, 2, 0)
                 # self.plotshow(ev_frames[i])
 
-            # rgb = self.render_hand(
-            #     meta_data['mano'],
-            #     meta_data['K_rgb'],
-            #     meta_data['R_rgb'],
-            #     meta_data['t_rgb'],
-            #     hw=[512, 334],
-            #     img_bg=rgb,
-            # )[0]
-            # ev_frames[-1] = self.render_hand(
-            #     meta_data['mano'],
-            #     meta_data['K_event'],
-            #     meta_data['R_event'],
-            #     meta_data['t_event'],
-            #     hw=[260, 346],
-            #     img_bg=ev_frames[-1],
-            # )[0]
+            rgb = self.render_hand(
+                meta_data['mano'],
+                meta_data['K_rgb'],
+                meta_data['R_rgb'],
+                meta_data['t_rgb'],
+                hw=[512, 334],
+                img_bg=rgb,
+            )[0]
+            ev_frames[-1] = self.render_hand(
+                meta_data['mano'],
+                meta_data['K_event'],
+                meta_data['R_event'],
+                meta_data['t_event'],
+                hw=[260, 346],
+                img_bg=ev_frames[-1],
+            )[0]
 
             bbox_rgb = self.get_bbox_by_interpolation(str(cap_id), self.ges_list[ges_index], t_target, meta_data['K_rgb'],
                                                       meta_data['R_rgb'], meta_data['t_rgb'])
@@ -876,7 +876,7 @@ class Interhand(Dataset):
 
             tf_w_c = self.change_camera_view(meta_data)
 
-            # self.plotshow(rgb_crop)
+            self.plotshow(rgb_crop)
             # self.plotshow(ev_frames_crop[-1])
 
             scene_type = torch.ones(2)
