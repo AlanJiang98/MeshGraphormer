@@ -1,5 +1,5 @@
 data:
-  dataset_yaml:  './src/datasets/dataset.yaml'#'./src/datasets/dataset_hfai.yaml'
+  dataset_yaml:  './src/datasets/dataset_hfai.yaml'#'./src/datasets/dataset_hfai.yaml'
   dataset: [ 'interhand','evrealhands'] #'interhand',,'evrealhands'
   smplx_path: './models/mano' #'/userhome/alanjjp/data/smplx_models/mano'
 
@@ -42,11 +42,11 @@ exper:
   debug: False
   run_eval_only: False
   resume_checkpoint: None
-  num_workers: 0
+  num_workers: 8
   output_dir: './output'
-  per_gpu_batch_size: 1
+  per_gpu_batch_size: 40
   lr: 0.0002
-  num_train_epochs: 200
+  num_train_epochs: 400
   device: 'cuda'
   seed: 88
   distributed: True
