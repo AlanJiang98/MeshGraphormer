@@ -110,7 +110,7 @@ def save_checkpoint(model, config, epoch, iteration, num_trial=10):
     model_to_save = model.module if hasattr(model, 'module') else model
     for i in range(num_trial):
         try:
-            torch.save(model_to_save, op.join(checkpoint_dir, 'model.bin'))
+            # torch.save(model_to_save, op.join(checkpoint_dir, 'model.bin'))
             torch.save(model_to_save.state_dict(), op.join(checkpoint_dir, 'state_dict.bin'))
             print("Save checkpoint to {}".format(checkpoint_dir))
             break
