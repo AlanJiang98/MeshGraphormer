@@ -154,7 +154,7 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
     optimizer = torch.optim.Adam(params=list(EvRGBStereo_model.parameters()),
                                  lr=config['exper']['lr'],
                                  betas=(0.9, 0.999),
-                                 weight_decay=0.0001)
+                                 weight_decay=0.0000)
 
     # todo add scheduler
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config['exper']['num_train_epochs'])
@@ -391,6 +391,9 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
                     cnn_params = sum(p.numel() for p in EvRGBStereo_model.ev_backbone.parameters()) / 1024.**2
                     print('each CNN params: {} M'.format(cnn_params))
                     file.write('each CNN params: {} M\n'.format(cnn_params))
+
+            print(meta_data[0]['seq_type'], preds[0][0]['scene_weight'])
+
             for step in range(steps):
 
                 bbox_valid = meta_data[step]['bbox_valid']
@@ -440,94 +443,207 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
                 #             for face in faces:
                 #                 print('f %d %d %d'%(face[0]+1, face[1]+1, face[2]+1), file=file_object)
 
-                # if config['eval']['output']['attention_map']:
-                #     id_tmp = 0
-                #     annot_dir = op.join(config['exper']['output_dir'], str(meta_data['seq_id'][id_tmp].item()), 'attention', str(meta_data['annot_id'][id_tmp].item()))
-                #     mkdir(annot_dir)
-                #     encoder_ids = range(len(config['model']['tfm']['input_feat_dim']))
-                #     layer_ids = range(config['model']['tfm']['num_hidden_layers'])
-                #     for encoder_id in encoder_ids:
-                #         for layer_id in layer_ids:
-                #             if 'att' in preds.keys():
-                #
-                #                 att_map = preds['att'][encoder_id][layer_id][id_tmp]
-                #
-                #                 attention_all = np.sum(att_map.detach().cpu().numpy(), axis=0)
-                #                 max_j_all = np.max(attention_all, axis=1, keepdims=True)
-                #                 min_j_all = np.min(attention_all, axis=1, keepdims=True)
-                #                 attention_all_normal = (attention_all - min_j_all) / (max_j_all - min_j_all)
-                #                 fig_, axes_ = plt.subplots(nrows=1, ncols=1, figsize=(6, 6))
-                #                 axes_.title.set_text('Attention Map All')
-                #                 axes_.imshow(attention_all_normal, cmap="inferno")
-                #                 fig_.savefig(op.join(annot_dir, 'attention_all_encoder{}_layer{}.png'.format(encoder_id, layer_id)))
-                #                 fig_.clear()
-                #
-                #                 shapes = np.array([16, 36, 16], dtype=np.int32)
-                #                 cnn_shape = shapes * np.array(config['model']['method']['ere_usage'])
-                #                 att_map_all = np.zeros((21, cnn_shape.sum()), dtype=np.float32)
-                #                 for i in range(config['model']['tfm']['num_attention_heads']):
-                #                     att_map_all += att_map[i][:21, -cnn_shape.sum():].detach().cpu().numpy()
-                #                 max_j = np.max(att_map_all, axis=1, keepdims=True)
-                #                 min_j = np.min(att_map_all, axis=1, keepdims=True)
-                #                 att_map_joints = (att_map_all - min_j) / (max_j - min_j)
-                #                 att_map_joints = att_map_joints[indices_change(1, 2)]
-                #                 fig, axes = plt.subplots(nrows=3, ncols=7*len(cnn_shape), figsize=(12*len(cnn_shape), 6))
-                #                 for i in range(3):
-                #                     for j in range(7):
-                #                         joint_id = 7 * i + j
-                #                         col = j * sum(config['model']['method']['ere_usage'])
-                #                         if config['model']['method']['ere_usage'][0]:
-                #                             axes[i, col].imshow(l_ev_frame[id_tmp].detach().cpu().numpy())
-                #                             att_map_ = cv2.resize(att_map_joints[joint_id, :cnn_shape[0]].reshape(4, 4),
-                #                                                   (l_ev_frame.shape[1:3]),
-                #                                                   interpolation=cv2.INTER_NEAREST)
-                #                             axes[i, col].imshow(att_map_, cmap="inferno", alpha=0.6)
-                #                             axes[i, col].title.set_text(f"Event {cfg.J_NAME[joint_id]}")
-                #                             axes[i, col].axis("off")
-                #                             col += 1
-                #                         if config['model']['method']['ere_usage'][1]:
-                #                             axes[i, col].imshow(rgb[id_tmp].detach().cpu().numpy())
-                #                             att_map_ = cv2.resize(att_map_joints[joint_id, cnn_shape[0]:sum(cnn_shape[:2])].reshape(6, 6), (rgb.shape[1:3]), interpolation=cv2.INTER_NEAREST)
-                #                             axes[i, col].imshow(att_map_, cmap="inferno", alpha=0.6)
-                #                             axes[i, col].title.set_text(f"RGB {cfg.J_NAME[joint_id]}")
-                #                             axes[i, col].axis("off")
-                #                             col += 1
-                #
-                #                 # fig.show()
-                #                 fig.savefig(op.join(annot_dir, 'encoder{}_layer{}.png'.format(encoder_id, layer_id)))
-                #                 fig.clear()
-                #
-                #         # todo draw attention map
-                #         pass
-                #
-                if config['eval']['output']['rendered']:
-                    key = config['eval']['output']['vis_rendered']
-                    if key == 'rgb':
-                        img_bg = frames[0][key+'_ori']
-                        _, h, w, _ = img_bg.shape
-                        hw = [h, w]
-                    else:
-                        img_bg = frames[0][key + '_ori'][-1]
-                        _, h, w, _ = img_bg.shape
-                        hw = [h, w]
-                    # print(meta_data[0]['K_'+key].device)
-                    # print(img_bg.device)
-                    # print(predicted_meshes.device)
-                    img_render = render.visualize(
-                        K=meta_data[0]['K_'+key].detach(),
-                        R=meta_data[0]['R_'+key].detach(),
-                        t=meta_data[0]['t_'+key].detach(),
-                        hw=hw,
-                        img_bg=img_bg.cpu(),
-                        vertices=predicted_meshes.detach(),
-                    )
-                    for i in range(img_render.shape[0]):
-                        img_dir = op.join(config['exper']['output_dir'], str(meta_data[0]['seq_id'][i].item()), 'rendered')
-                        mkdir(img_dir)
-                        imageio.imwrite(op.join(img_dir, '{}.jpg'.format(meta_data[0]['annot_id'][i].item())),
-                                        (img_render[i].detach().cpu().numpy() * 255).astype(np.uint8))
+            # if config['eval']['output']['attention_map'] or True:
+            #     id_tmp = 0
+            #     annot_dir = op.join(config['exper']['output_dir'], str(meta_data[0]['seq_id'][id_tmp].item()), 'attention', str(meta_data[0]['annot_id'][id_tmp].item()))
+            #     mkdir(annot_dir)
+            #     encoder_ids = 2
+            #     layer_ids = ['S', 'M', 'L'].index(config['model']['tfm']['scale']) + 1
+            #     for step in range(steps):
+            #         fig_encoder, axes_encoder = plt.subplots(nrows=encoder_ids, ncols=(layer_ids), figsize=((layer_ids)*2, encoder_ids*2))
+            #         fig_decoder, axes_decoder = plt.subplots(nrows=encoder_ids, ncols=(layer_ids * 2),
+            #                                                  figsize=((layer_ids*2) * 3, encoder_ids * 3))
+            #         if step != 0:
+            #             p_layers = config['model']['tfm']['perceiver_layers']
+            #             p_l_inner = 1 + config['model']['tfm']['n_self_att_layers']
+            #             fig_pe, axes_pe = plt.subplots(nrows=encoder_ids, ncols=(p_layers * p_l_inner), figsize=((p_layers * p_l_inner) * 2, encoder_ids * 2))
+            #             for p_l in range(p_layers):
+            #                 for p_l_i in range(p_l_inner):
+            #                     for encoder_id in range(encoder_ids):
+            #                         att_map = atts[2 * step][encoder_id+1][p_l*p_l_inner + p_l_i][id_tmp]
+            #
+            #                         attention_all = att_map.detach().cpu().numpy()
+            #                         max_j_all = np.max(attention_all, axis=1, keepdims=True)
+            #                         min_j_all = np.min(attention_all, axis=1, keepdims=True)
+            #                         attention_all_normal = (attention_all - min_j_all) / (max_j_all - min_j_all)
+            #                         axes_pe[encoder_id, p_l*p_l_inner + p_l_i].imshow(attention_all_normal,
+            #                                                                           cmap="inferno")
+            #                         axes_pe[encoder_id, p_l*p_l_inner + p_l_i].title.set_text(
+            #                             f"Pe {encoder_id} L_p {p_l} L_i {p_l_i}")
+            #                         axes_pe[encoder_id, p_l*p_l_inner + p_l_i].axis('off')
+            #             fig_pe.savefig(op.join(annot_dir, f'attention_all_peceiver_step_{step}.png'))
+            #             fig_pe.clear()
+            #         for encoder_id in range(encoder_ids):
+            #             for layer_id in range(layer_ids):
+            #                 # encoder
+            #                 if step == 0:
+            #                     att_map = atts[2*step][encoder_id][layer_id][id_tmp]
+            #                 else:
+            #                     att_map = atts[2*step][0][encoder_id][layer_id][id_tmp]
+            #
+            #                 attention_all = att_map.detach().cpu().numpy()
+            #                 max_j_all = np.max(attention_all, axis=1, keepdims=True)
+            #                 min_j_all = np.min(attention_all, axis=1, keepdims=True)
+            #                 attention_all_normal = (attention_all - min_j_all) / (max_j_all - min_j_all)
+            #                 axes_encoder[encoder_id, layer_id].imshow(attention_all_normal,  cmap="inferno")
+            #                 axes_encoder[encoder_id, layer_id].title.set_text(f"En {encoder_id} L {layer_id}")
+            #                 axes_encoder[encoder_id, layer_id].axis('off')
+            #
+            #                 # decoder
+            #                 for i, att_type in enumerate(['self', 'cross']):
+            #                     att_map = atts[2 * step + 1][encoder_id][layer_id][i][id_tmp]
+            #
+            #                     attention_all = att_map.detach().cpu().numpy()
+            #                     max_j_all = np.max(attention_all, axis=1, keepdims=True)
+            #                     min_j_all = np.min(attention_all, axis=1, keepdims=True)
+            #                     attention_all_normal = (attention_all - min_j_all) / (max_j_all - min_j_all)
+            #                     axes_decoder[encoder_id, layer_id*2+i].imshow(attention_all_normal,  cmap="inferno")
+            #                     axes_decoder[encoder_id, layer_id*2+i].title.set_text(f"De {encoder_id} L {layer_id} {att_type}")
+            #                     axes_decoder[encoder_id, layer_id*2+i].axis('off')
+            #
+            #
+            #         fig_encoder.savefig(op.join(annot_dir, f'attention_all_encoder_step_{step}.png'))
+            #         fig_encoder.clear()
+            #         fig_decoder.savefig(op.join(annot_dir, f'attention_all_decoder_step_{step}.png'))
+            #         fig_decoder.clear()
+            #         fig_input, axes_input = plt.subplots(nrows=1, ncols=2, figsize=(6, 3))
+            #         if step == 0:
+            #             axes_input[0].imshow(frames[step]['rgb'][id_tmp].detach().cpu().numpy())
+            #             axes_input[0].axis('off')
+            #
+            #         axes_input[1].imshow(frames[step]['ev_frames'][-1][id_tmp].detach().cpu().numpy())
+            #         axes_input[1].axis('off')
+            #         fig_input.savefig(op.join(annot_dir, f'data_step_{step}.png'))
+            #         fig_input.clear()
+            #                     # fig_, axes_ = plt.subplots(nrows=1, ncols=1, figsize=(6, 6))
+            #                     # axes_.title.set_text('Attention Map All')
+            #                     # axes_.imshow(attention_all_normal, cmap="inferno")
+            #                     # fig_.savefig(op.join(annot_dir, 'attention_all_encoder{}_layer{}.png'.format(encoder_id, layer_id)))
+            #                     # fig_.clear()
+            #                     #
+            #                     # shapes = np.array([16, 36, 16], dtype=np.int32)
+            #                     # cnn_shape = shapes * np.array(config['model']['method']['ere_usage'])
+            #                     # att_map_all = np.zeros((21, cnn_shape.sum()), dtype=np.float32)
+            #                     # for i in range(config['model']['tfm']['num_attention_heads']):
+            #                     #     att_map_all += att_map[i][:21, -cnn_shape.sum():].detach().cpu().numpy()
+            #                     # max_j = np.max(att_map_all, axis=1, keepdims=True)
+            #                     # min_j = np.min(att_map_all, axis=1, keepdims=True)
+            #                     # att_map_joints = (att_map_all - min_j) / (max_j - min_j)
+            #                     # att_map_joints = att_map_joints[indices_change(1, 2)]
+            #                     # fig, axes = plt.subplots(nrows=3, ncols=7*len(cnn_shape), figsize=(12*len(cnn_shape), 6))
+            #                     # for i in range(3):
+            #                     #     for j in range(7):
+            #                     #         joint_id = 7 * i + j
+            #                     #         col = j * sum(config['model']['method']['ere_usage'])
+            #                     #         if config['model']['method']['ere_usage'][0]:
+            #                     #             axes[i, col].imshow(l_ev_frame[id_tmp].detach().cpu().numpy())
+            #                     #             att_map_ = cv2.resize(att_map_joints[joint_id, :cnn_shape[0]].reshape(4, 4),
+            #                     #                                   (l_ev_frame.shape[1:3]),
+            #                     #                                   interpolation=cv2.INTER_NEAREST)
+            #                     #             axes[i, col].imshow(att_map_, cmap="inferno", alpha=0.6)
+            #                     #             axes[i, col].title.set_text(f"Event {cfg.J_NAME[joint_id]}")
+            #                     #             axes[i, col].axis("off")
+            #                     #             col += 1
+            #                     #         if config['model']['method']['ere_usage'][1]:
+            #                     #             axes[i, col].imshow(rgb[id_tmp].detach().cpu().numpy())
+            #                     #             att_map_ = cv2.resize(att_map_joints[joint_id, cnn_shape[0]:sum(cnn_shape[:2])].reshape(6, 6), (rgb.shape[1:3]), interpolation=cv2.INTER_NEAREST)
+            #                     #             axes[i, col].imshow(att_map_, cmap="inferno", alpha=0.6)
+            #                     #             axes[i, col].title.set_text(f"RGB {cfg.J_NAME[joint_id]}")
+            #                     #             axes[i, col].axis("off")
+            #                     #             col += 1
+            #                     #
+            #                     # # fig.show()
+            #                     # fig.savefig(op.join(annot_dir, 'encoder{}_layer{}.png'.format(encoder_id, layer_id)))
+            #                     # fig.clear()
+            #
+            #     # if config['eval']['output']['attention_map']:
+            #     #     id_tmp = 0
+            #     #     annot_dir = op.join(config['exper']['output_dir'], str(meta_data['seq_id'][id_tmp].item()), 'attention', str(meta_data['annot_id'][id_tmp].item()))
+            #     #     mkdir(annot_dir)
+            #     #     encoder_ids = range(len(config['model']['tfm']['input_feat_dim']))
+            #     #     layer_ids = range(config['model']['tfm']['num_hidden_layers'])
+            #     #     for encoder_id in encoder_ids:
+            #     #         for layer_id in layer_ids:
+            #     #             if 'att' in preds.keys():
+            #     #
+            #     #                 att_map = preds['att'][encoder_id][layer_id][id_tmp]
+            #     #
+            #     #                 attention_all = np.sum(att_map.detach().cpu().numpy(), axis=0)
+            #     #                 max_j_all = np.max(attention_all, axis=1, keepdims=True)
+            #     #                 min_j_all = np.min(attention_all, axis=1, keepdims=True)
+            #     #                 attention_all_normal = (attention_all - min_j_all) / (max_j_all - min_j_all)
+            #     #                 fig_, axes_ = plt.subplots(nrows=1, ncols=1, figsize=(6, 6))
+            #     #                 axes_.title.set_text('Attention Map All')
+            #     #                 axes_.imshow(attention_all_normal, cmap="inferno")
+            #     #                 fig_.savefig(op.join(annot_dir, 'attention_all_encoder{}_layer{}.png'.format(encoder_id, layer_id)))
+            #     #                 fig_.clear()
+            #     #
+            #     #                 shapes = np.array([16, 36, 16], dtype=np.int32)
+            #     #                 cnn_shape = shapes * np.array(config['model']['method']['ere_usage'])
+            #     #                 att_map_all = np.zeros((21, cnn_shape.sum()), dtype=np.float32)
+            #     #                 for i in range(config['model']['tfm']['num_attention_heads']):
+            #     #                     att_map_all += att_map[i][:21, -cnn_shape.sum():].detach().cpu().numpy()
+            #     #                 max_j = np.max(att_map_all, axis=1, keepdims=True)
+            #     #                 min_j = np.min(att_map_all, axis=1, keepdims=True)
+            #     #                 att_map_joints = (att_map_all - min_j) / (max_j - min_j)
+            #     #                 att_map_joints = att_map_joints[indices_change(1, 2)]
+            #     #                 fig, axes = plt.subplots(nrows=3, ncols=7*len(cnn_shape), figsize=(12*len(cnn_shape), 6))
+            #     #                 for i in range(3):
+            #     #                     for j in range(7):
+            #     #                         joint_id = 7 * i + j
+            #     #                         col = j * sum(config['model']['method']['ere_usage'])
+            #     #                         if config['model']['method']['ere_usage'][0]:
+            #     #                             axes[i, col].imshow(l_ev_frame[id_tmp].detach().cpu().numpy())
+            #     #                             att_map_ = cv2.resize(att_map_joints[joint_id, :cnn_shape[0]].reshape(4, 4),
+            #     #                                                   (l_ev_frame.shape[1:3]),
+            #     #                                                   interpolation=cv2.INTER_NEAREST)
+            #     #                             axes[i, col].imshow(att_map_, cmap="inferno", alpha=0.6)
+            #     #                             axes[i, col].title.set_text(f"Event {cfg.J_NAME[joint_id]}")
+            #     #                             axes[i, col].axis("off")
+            #     #                             col += 1
+            #     #                         if config['model']['method']['ere_usage'][1]:
+            #     #                             axes[i, col].imshow(rgb[id_tmp].detach().cpu().numpy())
+            #     #                             att_map_ = cv2.resize(att_map_joints[joint_id, cnn_shape[0]:sum(cnn_shape[:2])].reshape(6, 6), (rgb.shape[1:3]), interpolation=cv2.INTER_NEAREST)
+            #     #                             axes[i, col].imshow(att_map_, cmap="inferno", alpha=0.6)
+            #     #                             axes[i, col].title.set_text(f"RGB {cfg.J_NAME[joint_id]}")
+            #     #                             axes[i, col].axis("off")
+            #     #                             col += 1
+            #     #
+            #     #                 # fig.show()
+            #     #                 fig.savefig(op.join(annot_dir, 'encoder{}_layer{}.png'.format(encoder_id, layer_id)))
+            #     #                 fig.clear()
+            #     #
+            #     #         # todo draw attention map
+            #     #         pass
+            #     #
+            #     if config['eval']['output']['rendered']:
+            #         key = config['eval']['output']['vis_rendered']
+            #         if key == 'rgb':
+            #             img_bg = frames[0][key+'_ori']
+            #             _, h, w, _ = img_bg.shape
+            #             hw = [h, w]
+            #         else:
+            #             img_bg = frames[0][key + '_ori'][-1]
+            #             _, h, w, _ = img_bg.shape
+            #             hw = [h, w]
+            #         # print(meta_data[0]['K_'+key].device)
+            #         # print(img_bg.device)
+            #         # print(predicted_meshes.device)
+            #         img_render = render.visualize(
+            #             K=meta_data[0]['K_'+key].detach(),
+            #             R=meta_data[0]['R_'+key].detach(),
+            #             t=meta_data[0]['t_'+key].detach(),
+            #             hw=hw,
+            #             img_bg=img_bg.cpu(),
+            #             vertices=predicted_meshes.detach(),
+            #         )
+            #         for i in range(img_render.shape[0]):
+            #             img_dir = op.join(config['exper']['output_dir'], str(meta_data[0]['seq_id'][i].item()), 'rendered')
+            #             mkdir(img_dir)
+            #             imageio.imwrite(op.join(img_dir, '{}.jpg'.format(meta_data[0]['annot_id'][i].item())),
+            #                             (img_render[i].detach().cpu().numpy() * 255).astype(np.uint8))
 
-            if (iteration - 1) % config['utils']['logging_steps'] == 0:
+            if (iteration - 1) % config['utils']['logging_steps'] == 0.5:
                 eta_seconds = batch_time.avg * (len(val_dataloader_normal) / config['exper']['per_gpu_batch_size'] - iteration)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
                 if is_main_process():
@@ -724,6 +840,8 @@ def get_config():
         config['eval']['augment'] = {}
     config['eval']['augment']['scale'] = args.s
     config['eval']['augment']['rot'] = args.r
+    config['data']['dataset_yaml'] = '/userhome/alanjjp/Project/MeshGraphormer/src/datasets/dataset.yaml'
+    config['data']['smplx_path'] = '/userhome/alanjjp/data/smplx_models/mano'
     return config
 
 

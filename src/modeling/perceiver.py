@@ -356,7 +356,7 @@ class SelfAttention(nn.Module):
         latent_, att_self = self.self_attn(q, k, value=latent_, attn_mask=latent_mask,
                                         key_padding_mask=tgt_key_padding_mask)
         latent = latent + self.dropout(latent_)
-        if return_att:
+        if not return_att:
             att_self = None
         return latent, att_self
 

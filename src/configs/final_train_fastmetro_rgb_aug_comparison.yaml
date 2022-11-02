@@ -1,23 +1,26 @@
 data:
   dataset_yaml: '/userhome/alanjjp/Project/MeshGraphormer/src/datasets/dataset.yaml'
-  dataset: ['evrealhands']
+  dataset: ['interhand', 'evrealhands']
   smplx_path: '/userhome/alanjjp/data/smplx_models/mano'
 
 model:
   bert_config: 'src/modeling/bert/bert-base-uncased/'
   method:
-    framework: 'perceiver' #'encoder_decoder_based' # 'encoder_decoder_based'
-    ere_usage: [True, True, False]
+    framework: 'encoder_decoder_based' #'encoder_decoder_based' # 'encoder_decoder_based'
+    ere_usage: [False, True, False]
   tfm:
     scale: 'L' # 'S', 'M', 'L'
     model_dim: [512, 128]
     feedforward_dim: [1024, 256]
     pos_type: 'sine'
     nhead: 8
+    latent: 'all'
+    scene_weight: False
     n_self_att_layers: 2
     iterations: 1
+    mask: 0.
     perceiver_layers: 2
-    decoder_features: [True, True, False]
+    decoder_features: [False, True, False]
     output_attentions: True
     drop_out: 0.1
     mesh_type: 'hand'
@@ -35,14 +38,14 @@ model:
 
 
 exper:
-  debug: True
+  debug: False
   run_eval_only: False
   resume_checkpoint: None
-  num_workers: 0
+  num_workers: 6
   output_dir: './output'
-  per_gpu_batch_size: 1
+  per_gpu_batch_size: 64
   lr: 0.0002
-  num_train_epochs: 300
+  num_train_epochs: 200
   device: 'cuda'
   seed: 88
   distributed: True
@@ -50,11 +53,11 @@ exper:
   use_gt: False
   preprocess:
     left_window: [3000, 1000000]
-    ev_repre: 'eci' #'Lnes', 'eci'
+    ev_repre: 'LNES' #'Lnes', 'eci'
     event_range: 'num' # 'time'
     num_window: 7000
     num_var: 2000
-    cam_view: 'event' # 'world', 'rgb', 'event
+    cam_view: 'rgb' # 'world', 'rgb', 'event
     steps: 1
     segments: 1
   augment:
@@ -83,14 +86,14 @@ exper:
         brightness:
           thre: [0.6, 5.]
       gauss:
-        var: [0.05, 0.2]
-        p: 0.8
+        var: [0.05, 0.1]
+        p: 0.2
       gaussianblur:
-        p: 0.1
-        kernel_size: 15
-        sigma: [0.5, 3.]
+        p: 0.0
+        kernel_size: 31
+        sigma: [0.1, 0.3]
       salt_pepper:
-        p: 0.15
+        p: 0.1
         rate: 0.1
   bbox:
     rate: 1.5
@@ -101,12 +104,14 @@ exper:
   loss:
     vertices: 100.0
     vertices_sub: 100.0
-    3d_joints: 2000.0
-    3d_joints_from_mesh: 1000.0
+    3d_joints: 200.0
+    3d_joints_from_mesh: 200.0
     seg_rgb: 10.0
     seg_event: 10.0
     2d_joints_rgb: 50.
     2d_joints_event: 50.
+    label_smoothing: 0.1
+    scene: 10.
 
 eval:
   fast: False

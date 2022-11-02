@@ -221,14 +221,7 @@ class Interhand(Dataset):
                             id_time = (ids_ - ids_[0]) / 90. * 1000000.
                             # print("?????")
                             joint3d_ = np.array(valid_joint3d, dtype=np.float32)[:, indices_change(0, 1)] / 1000.
-                            # print("stop here?")
-                            # print(id_time.shape, joint3d_.shape)
-                            # print(id_time)
-                            # print(joint3d_)
-                            # np.save("id_time.npy", id_time)
-                            # np.save("joint3d_.npy", joint3d_)
                             bbox_inter_f_ = interp1d(id_time, joint3d_, axis=0, kind='linear')
-                            # print("?")
                             bbox_inter_f_cap[ges] = bbox_inter_f_
                             # print(f"finish ges: {ges}, imagepair: {pair_id}")
         if is_main_process():
@@ -901,7 +894,7 @@ class Interhand(Dataset):
                 frames.update(
                     {
                         'rgb_ori': rgb,
-                        'ev_frames_ori': [torch.tensor(frame, dtype=torch.float32) for frame in ev_frames],
+                        'event_ori': [torch.tensor(frame, dtype=torch.float32) for frame in ev_frames],
                     }
                 )
                 meta_data.update({
