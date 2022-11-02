@@ -111,7 +111,7 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
     optimizer = torch.optim.Adam(params=list(EvRGBStereo_model.parameters()),
                                  lr=config['exper']['lr'],
                                  betas=(0.9, 0.999),
-                                 weight_decay=0.0001)
+                                 weight_decay=0.0000)
 
     # todo add scheduler
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config['exper']['num_train_epochs'])
