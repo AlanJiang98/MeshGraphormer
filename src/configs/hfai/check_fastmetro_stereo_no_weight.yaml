@@ -6,7 +6,7 @@ data:
 model:
   bert_config: 'src/modeling/bert/bert-base-uncased/'
   method:
-    framework: 'encoder_decoder_based' #'encoder_decoder_based' 'encoder_based' 'perceiver'
+    framework: 'perceiver' #'encoder_decoder_based' 'encoder_based' 'perceiver'
     ere_usage: [True, True, False]
   tfm:
     scale: 'L' # 'S', 'M', 'L'
@@ -44,7 +44,7 @@ exper:
   resume_checkpoint: None
   num_workers: 8
   output_dir: './output'
-  per_gpu_batch_size: 40
+  per_gpu_batch_size: 64
   lr: 0.0002
   num_train_epochs: 400
   device: 'cuda'
