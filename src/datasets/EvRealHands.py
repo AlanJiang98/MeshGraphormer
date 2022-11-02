@@ -127,7 +127,7 @@ class EvRealHands(Dataset):
             self.seq_ids += all_sub_2_seq_ids[str(sub_id)]
         if self.config['exper']['debug']:
             if self.config['exper']['run_eval_only']:
-                seq_ids = ['1', '53']
+                seq_ids = ['1', '53', '4', '20'] #'52', '20', '21', '26', '27', '25']
             else:
                 seq_ids = ['41', '18']#['24', '18']
             for seq_id in seq_ids:
@@ -194,9 +194,7 @@ class EvRealHands(Dataset):
         return seq_id, cam_pair, annot_id
 
     def load_img(self, path, order='RGB'):
-        #todo
-        #img = cv2.imread(path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
-        img = cv2.imread(path, cv2.IMREAD_COLOR)
+        img = cv2.imread(path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
         if not isinstance(img, np.ndarray):
             raise IOError("Fail to read %s" % path)
         if order == 'RGB':
@@ -523,7 +521,7 @@ class EvRealHands(Dataset):
                     joints_3ds[i] = np.array(self.data[seq_id]['annot']['3d_joints'][str(id)], dtype=np.float32).reshape(-1, 3)[indices_change(2, 1)] / 1000.
 
                 # this is 3d joints bbox interpolation function
-                bbox_inter_f = interp1d(ids_timestamp, joints_3ds, axis=0, kind='cubic')
+                bbox_inter_f = interp1d(ids_timestamp, joints_3ds, axis=0, kind='linear')
                 self.bbox_inter[seq_id] = {'joints': bbox_inter_f}
 
     def get_bbox_inter_f(self):

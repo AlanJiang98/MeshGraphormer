@@ -36,37 +36,80 @@ def get_config():
     config['data']['dataset_info'] = dataset_config
     config['exper']['debug'] = True
     config['exper']['run_eval_only'] = True#True
+    config['eval']['fast'] = True
     return config
 
 config = get_config()
 
-a = Interhand(config)
 
-davis_width = 346
-davis_height = 260
-factor = 1
-img_ori_height, img_ori_width = 512, 334
+a = EvRealHands(config)
 
-# get the affine matrix from RGB frame to event frame, and this affine matrix will influence the camera intrinsics
-src_points = np.float32([[0, 0], [img_ori_width / 2 - 1, 0], [img_ori_width / 2 - 1, img_ori_height * factor]])
-dst_points = np.float32([[davis_width / 2 - img_ori_width / 2 * davis_height / factor / img_ori_height, 0],
-                         [davis_width / 2 - 1, 0],
-                         [davis_width / 2 - 1, davis_height - 1]])
-affine_matrix = cv2.getAffineTransform(src_points, dst_points)
-
-output_dir = '/userhome/alanjjp/Project/MeshGraphormer/scripts/forpaper/interhand_seq0'
+output_dir = '/userhome/alanjjp/Project/MeshGraphormer/scripts/forpaper/evrealhands'
 mkdir(output_dir)
 
-for i in range(0, len(a), 20):
-    frames, _ = a[i]
-    rgb = frames[0]['rgb_ori']
-    rgb_affine = cv2.warpAffine(rgb.numpy(), affine_matrix, (davis_width, davis_height))
-    eci = frames[0]['ev_frames_ori'][0]
-    rgb_affine = rgb_affine[:, 100:250, ...]
-    eci = eci[:, 100:250, ...].numpy()
-    pair = np.concatenate([rgb_affine, eci], axis=1)
-    imageio.imwrite(os.path.join(output_dir, 'eci_{}.png'.format(i)), (pair * 255).astype(np.uint8))
+flash = 0
+normal = 0
+highlight = 0
+fast = 0
+
+for i in range(0, len(a), 5):
+    frames, info = a[i]
+    if info[0]['seq_id'] == 0 or info[0]['seq_id'] == 1:
+        if normal > 200:
+            continue
+        normal += 1
+    if info[0]['seq_id'] == 2 or info[0]['seq_id'] == 3:
+        if highlight > 100:
+            continue
+        highlight += 1
+    if info[0]['seq_id'] == 4 or info[0]['seq_id'] == 5:
+        if flash > 100:
+            continue
+        flash += 1
+    if info[0]['seq_id'] == 6:
+        if fast > 100:
+            continue
+        fast += 1
+    rgb = frames[0]['rgb_ori'].numpy()
+    eci = frames[0]['event_ori'][0].numpy()
+    # pair = np.concatenate([rgb, eci], axis=1)
+    seq_id = str(info[0]['seq_id'].item())
+    annot_id = str(info[0]['annot_id'].item())
+    mkdir(os.path.join(output_dir, seq_id))
+    imageio.imwrite(os.path.join(output_dir, seq_id, 'image_{}.png'.format(annot_id)), (rgb * 255).astype(np.uint8))
+    imageio.imwrite(os.path.join(output_dir, seq_id, 'eci_{}.png'.format(annot_id)), (eci * 255).astype(np.uint8))
     pass
+
+
+
+
+# a = Interhand(config)
+#
+# davis_width = 346
+# davis_height = 260
+# factor = 1
+# img_ori_height, img_ori_width = 512, 334
+#
+# # get the affine matrix from RGB frame to event frame, and this affine matrix will influence the camera intrinsics
+# src_points = np.float32([[0, 0], [img_ori_width / 2 - 1, 0], [img_ori_width / 2 - 1, img_ori_height * factor]])
+# dst_points = np.float32([[davis_width / 2 - img_ori_width / 2 * davis_height / factor / img_ori_height, 0],
+#                          [davis_width / 2 - 1, 0],
+#                          [davis_width / 2 - 1, davis_height - 1]])
+# affine_matrix = cv2.getAffineTransform(src_points, dst_points)
+#
+# output_dir = '/userhome/alanjjp/Project/MeshGraphormer/scripts/forpaper/interhand_seq0'
+# mkdir(output_dir)
+#
+# for i in range(0, len(a), 20):
+#     frames, _ = a[i]
+#     rgb = frames[0]['rgb_ori']
+#     rgb_affine = cv2.warpAffine(rgb.numpy(), affine_matrix, (davis_width, davis_height))
+#     eci = frames[0]['ev_frames_ori'][0]
+#     rgb_affine = rgb_affine[:, 100:250, ...]
+#     eci = eci[:, 100:250, ...].numpy()
+#     pair = np.concatenate([rgb_affine, eci], axis=1)
+#     imageio.imwrite(os.path.join(output_dir, 'eci_{}.png'.format(i)), (pair * 255).astype(np.uint8))
+#     pass
 
 
 # dataset = EvRealHands(config)

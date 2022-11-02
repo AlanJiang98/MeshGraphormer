@@ -332,6 +332,9 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
                     cnn_params = sum(p.numel() for p in EvRGBStereo_model.ev_backbone.parameters()) / 1024.**2
                     print('each CNN params: {} M'.format(cnn_params))
                     file.write('each CNN params: {} M\n'.format(cnn_params))
+
+            print(meta_data[0]['seq_type'], preds[0][0]['scene_weight'])
+
             for step in range(steps):
 
                 bbox_valid = meta_data[step]['bbox_valid']
@@ -581,7 +584,7 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
             #             imageio.imwrite(op.join(img_dir, '{}.jpg'.format(meta_data[0]['annot_id'][i].item())),
             #                             (img_render[i].detach().cpu().numpy() * 255).astype(np.uint8))
 
-            if (iteration - 1) % config['utils']['logging_steps'] == 0:
+            if (iteration - 1) % config['utils']['logging_steps'] == 0.5:
                 eta_seconds = batch_time.avg * (len(val_dataloader_normal) / config['exper']['per_gpu_batch_size'] - iteration)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
                 if is_main_process():

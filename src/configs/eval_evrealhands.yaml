@@ -2,9 +2,9 @@ data:
   dataset_yaml: '/userhome/alanjjp/Project/MeshGraphormer/src/datasets/dataset.yaml'
   dataset: ['evrealhands']
 exper:
-  debug: False
-  num_workers: 4
-  per_gpu_batch_size: 16
+  debug: True
+  num_workers: 0
+  per_gpu_batch_size: 1
   preprocess:
     ev_repre: 'LNES' #'Lnes', 'eci'
     event_range: 'num' # 'time'

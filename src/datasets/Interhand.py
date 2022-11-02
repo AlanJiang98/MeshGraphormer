@@ -283,8 +283,7 @@ class Interhand(Dataset):
         return index_l+indices[0], index_r+indices[0]
 
     def load_img(self, path, order='RGB'):
-        # img = cv2.imread(path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
-        img = cv2.imread(path, cv2.IMREAD_COLOR)
+        img = cv2.imread(path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
         if not isinstance(img, np.ndarray):
             raise IOError("Fail to read %s" % path)
         if order == 'RGB':
@@ -770,7 +769,7 @@ class Interhand(Dataset):
                 frames.update(
                     {
                         'rgb_ori': rgb,
-                        'ev_frames_ori': [torch.tensor(frame, dtype=torch.float32) for frame in ev_frames],
+                        'event_ori': [torch.tensor(frame, dtype=torch.float32) for frame in ev_frames],
                     }
                 )
                 meta_data.update({
