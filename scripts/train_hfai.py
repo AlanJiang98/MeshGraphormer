@@ -234,7 +234,7 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
 
         if iteration % iters_per_epoch == 0:
             save_latest(EvRGBStereo_model, optimizer, scheduler, config, epoch, iteration)
-            if epoch % 10 == 0:
+            if epoch % 20 == 0 and epoch > 180:
                 checkpoint_dir = save_checkpoint(EvRGBStereo_model, config, epoch, iteration)
 
     total_training_time = time.time() - start_training_time
