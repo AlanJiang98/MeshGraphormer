@@ -1,26 +1,26 @@
 data:
-  dataset_yaml:  './src/datasets/dataset_hfai.yaml' #'./src/datasets/dataset_hfai.yaml'
+  dataset_yaml: './src/datasets/dataset_hfai.yaml'
   dataset: [ 'interhand','evrealhands'] #'interhand',,'evrealhands'
-  smplx_path: './models/mano' #'/userhome/alanjjp/data/smplx_models/mano'
+  smplx_path: './models/mano'
 
 model:
   bert_config: 'src/modeling/bert/bert-base-uncased/'
   method:
-    framework: 'encoder_decoder_based' #'encoder_decoder_based' 'encoder_based' 'perceiver'
-    ere_usage: [False, True, False]
+    framework: 'perceiver' #'encoder_decoder_based' 'encoder_based' 'perceiver'
+    ere_usage: [True, True, False]
   tfm:
     scale: 'L' # 'S', 'M', 'L'
     model_dim: [512, 128]
     feedforward_dim: [1024, 256]
     pos_type: 'sine'
     nhead: 8
-    latent: 'all' # 'rgb'
-    scene_weight: False # 3.2
+    latent: 'all'
+    scene_weight: False
     n_self_att_layers: 2
     iterations: 1
-    mask: 0.0
+    mask: 0.2
     perceiver_layers: 2
-    decoder_features: [False, True, False]
+    decoder_features: [True, True, False]
     output_attentions: True
     drop_out: 0.1
     mesh_type: 'hand'
@@ -32,7 +32,7 @@ model:
     hidden_feat_dim: [ 1024,256,64 ]
     which_gcn: [ 0, 0, 1 ]
   backbone:
-    arch: 'hrnet' #'resnet50'
+    arch: 'hrnet'
     hrnet_yaml: 'models/hrnet/cls_hrnet_w64_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
     hrnet_bb: 'models/hrnet/hrnetv2_w64_imagenet_pretrained.pth'
 #    hrnet_yaml: 'models/hrnet/cls_hrnet_w40_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
@@ -44,7 +44,7 @@ exper:
   resume_checkpoint: None
   num_workers: 8
   output_dir: './output'
-  per_gpu_batch_size: 80
+  per_gpu_batch_size: 64
   lr: 0.0002
   num_train_epochs: 400
   device: 'cuda'
@@ -59,7 +59,7 @@ exper:
     num_window: 7000
     num_var: 2000
     cam_view: 'rgb' # 'world', 'rgb', 'event
-    steps: 1 # 1 for fastmetro 3 for perceiver
+    steps: 1
     segments: 1
   augment:
     geometry:
@@ -68,14 +68,14 @@ exper:
       rot: 0.2
     rgb_photometry:
       colorjitter:
-        p: 0.2
+        p: 0.15
         brightness:
           thre: [0.6, 5.]
       gauss:
         var: [0.1, 0.2]
         p: 0.8
       gaussianblur:
-        p: 0.2
+        p: 0.15
         kernel_size: 19
         sigma: [4, 8]
       salt_pepper:
@@ -90,11 +90,11 @@ exper:
         var: [0.05, 0.2]
         p: 0.8
       gaussianblur:
-        p: 0.1
+        p: 0.0
         kernel_size: 15
         sigma: [0.5, 3.]
       salt_pepper:
-        p: 0.2
+        p: 0.15
         rate: 0.1
   bbox:
     rate: 1.5
@@ -111,8 +111,8 @@ exper:
     seg_event: 10.0
     2d_joints_rgb: 50.
     2d_joints_event: 50.
-    label_smoothing: 0.1 #3.2
-    scene: 10. # 3.2
+    label_smoothing: 0.1
+    scene: 10.
 
 eval:
   fast: False
@@ -128,7 +128,7 @@ eval:
     attention_map: True
     errors: True
     rendered: True
-    vis_rendered: 'event' # view for visualization
+    vis_rendered: 'event'
 
 utils:
   logging_steps: 10

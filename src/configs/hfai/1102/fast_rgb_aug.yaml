@@ -1,13 +1,13 @@
 data:
-  dataset_yaml:  './src/datasets/dataset_hfai.yaml'#'./src/datasets/dataset_hfai.yaml'
+  dataset_yaml:  './src/datasets/dataset_hfai.yaml' #'./src/datasets/dataset_hfai.yaml'
   dataset: [ 'interhand','evrealhands'] #'interhand',,'evrealhands'
   smplx_path: './models/mano' #'/userhome/alanjjp/data/smplx_models/mano'
 
 model:
   bert_config: 'src/modeling/bert/bert-base-uncased/'
   method:
-    framework: 'perceiver' #'encoder_decoder_based' 'encoder_based' 'perceiver'
-    ere_usage: [True, True, False]
+    framework: 'encoder_decoder_based' #'encoder_decoder_based' 'encoder_based' 'perceiver'
+    ere_usage: [False, True, False]
   tfm:
     scale: 'L' # 'S', 'M', 'L'
     model_dim: [512, 128]
@@ -20,7 +20,7 @@ model:
     iterations: 1
     mask: 0.0
     perceiver_layers: 2
-    decoder_features: [True, True, False]
+    decoder_features: [False, True, False]
     output_attentions: True
     drop_out: 0.1
     mesh_type: 'hand'
@@ -44,7 +44,7 @@ exper:
   resume_checkpoint: None
   num_workers: 8
   output_dir: './output'
-  per_gpu_batch_size: 64
+  per_gpu_batch_size: 80
   lr: 0.0002
   num_train_epochs: 400
   device: 'cuda'
@@ -68,14 +68,14 @@ exper:
       rot: 0.2
     rgb_photometry:
       colorjitter:
-        p: 0.2
+        p: 0.15
         brightness:
           thre: [0.6, 5.]
       gauss:
         var: [0.1, 0.2]
         p: 0.8
       gaussianblur:
-        p: 0.2
+        p: 0.15
         kernel_size: 19
         sigma: [4, 8]
       salt_pepper:
@@ -90,11 +90,11 @@ exper:
         var: [0.05, 0.2]
         p: 0.8
       gaussianblur:
-        p: 0.1
+        p: 0.0
         kernel_size: 15
         sigma: [0.5, 3.]
       salt_pepper:
-        p: 0.2
+        p: 0.15
         rate: 0.1
   bbox:
     rate: 1.5

@@ -1,6 +1,6 @@
 python -m torch.distributed.launch --nproc_per_node=8 scripts/train_hfai.py \
-    --config src/configs/hfai/check_fastmetro_stereo_no_weight.yaml \
-    --output_dir output/check_fastmetro_stereo_no_weight_2
+    --config src/configs/hfai/1102/fast_rgb_aug.yaml \
+    --output_dir output/1102/fast_rgb_aug
 
 
 # CUDA_VISIBLE_DEVICES=7 python scripts/train.py \
