@@ -333,7 +333,7 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
                     print('each CNN params: {} M'.format(cnn_params))
                     file.write('each CNN params: {} M\n'.format(cnn_params))
 
-            print(meta_data[0]['seq_type'], preds[0][0]['scene_weight'])
+            # print(meta_data[0]['seq_type'], preds[0][0]['scene_weight'])
 
             for step in range(steps):
 

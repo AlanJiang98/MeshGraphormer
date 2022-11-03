@@ -12,6 +12,7 @@ from src.utils.miscellaneous import mkdir, set_seed
 import pandas as pd
 from pyntcloud import PyntCloud
 from src.modeling._mano import MANO
+from src.utils.joint_indices import indices_change
 
 
 from src.configs.config_parser import ConfigParser
@@ -36,49 +37,49 @@ def get_config():
     config['data']['dataset_info'] = dataset_config
     config['exper']['debug'] = True
     config['exper']['run_eval_only'] = True#True
-    config['eval']['fast'] = True
+    config['eval']['fast'] = False
     return config
 
 config = get_config()
 
 
-a = EvRealHands(config)
-
-output_dir = '/userhome/alanjjp/Project/MeshGraphormer/scripts/forpaper/evrealhands'
-mkdir(output_dir)
-
-flash = 0
-normal = 0
-highlight = 0
-fast = 0
-
-for i in range(0, len(a), 5):
-    frames, info = a[i]
-    if info[0]['seq_id'] == 0 or info[0]['seq_id'] == 1:
-        if normal > 200:
-            continue
-        normal += 1
-    if info[0]['seq_id'] == 2 or info[0]['seq_id'] == 3:
-        if highlight > 100:
-            continue
-        highlight += 1
-    if info[0]['seq_id'] == 4 or info[0]['seq_id'] == 5:
-        if flash > 100:
-            continue
-        flash += 1
-    if info[0]['seq_id'] == 6:
-        if fast > 100:
-            continue
-        fast += 1
-    rgb = frames[0]['rgb_ori'].numpy()
-    eci = frames[0]['event_ori'][0].numpy()
-    # pair = np.concatenate([rgb, eci], axis=1)
-    seq_id = str(info[0]['seq_id'].item())
-    annot_id = str(info[0]['annot_id'].item())
-    mkdir(os.path.join(output_dir, seq_id))
-    imageio.imwrite(os.path.join(output_dir, seq_id, 'image_{}.png'.format(annot_id)), (rgb * 255).astype(np.uint8))
-    imageio.imwrite(os.path.join(output_dir, seq_id, 'eci_{}.png'.format(annot_id)), (eci * 255).astype(np.uint8))
-    pass
+# a = EvRealHands(config)
+#
+# output_dir = '/userhome/alanjjp/Project/MeshGraphormer/scripts/forpaper/evrealhands'
+# mkdir(output_dir)
+#
+# flash = 0
+# normal = 0
+# highlight = 0
+# fast = 0
+#
+# for i in range(0, len(a), 5):
+#     frames, info = a[i]
+#     if info[0]['seq_id'] == 0 or info[0]['seq_id'] == 1:
+#         if normal > 200:
+#             continue
+#         normal += 1
+#     if info[0]['seq_id'] == 2 or info[0]['seq_id'] == 3:
+#         if highlight > 100:
+#             continue
+#         highlight += 1
+#     if info[0]['seq_id'] == 4 or info[0]['seq_id'] == 5:
+#         if flash > 100:
+#             continue
+#         flash += 1
+#     if info[0]['seq_id'] == 6:
+#         if fast > 100:
+#             continue
+#         fast += 1
+#     rgb = frames[0]['rgb_ori'].numpy()
+#     eci = frames[0]['event_ori'][0].numpy()
+#     # pair = np.concatenate([rgb, eci], axis=1)
+#     seq_id = str(info[0]['seq_id'].item())
+#     annot_id = str(info[0]['annot_id'].item())
+#     mkdir(os.path.join(output_dir, seq_id))
+#     imageio.imwrite(os.path.join(output_dir, seq_id, 'image_{}.png'.format(annot_id)), (rgb * 255).astype(np.uint8))
+#     imageio.imwrite(os.path.join(output_dir, seq_id, 'eci_{}.png'.format(annot_id)), (eci * 255).astype(np.uint8))
+#     pass
 
 
 
@@ -112,15 +113,15 @@ for i in range(0, len(a), 5):
 #     pass
 
 
-# dataset = EvRealHands(config)
-#
-# output_dir = './scripts/forpaper/teaser'
-# mkdir(output_dir)
-#
-# item = dataset[92]
-# t_l = 113 * 1e6 / 15. + dataset.data['1']['annot']['delta_time'] - 1e6 / 15.
-# t_r = t_l + 7 * 1e6 / 15.
-# events_all = dataset.data['1']['event']
+dataset = EvRealHands(config)
+
+output_dir = './scripts/forpaper/teaser'
+mkdir(output_dir)
+
+item = dataset[92]
+t_l = 113 * 1e6 / 15. + dataset.data['1']['annot']['delta_time'] - 1e6 / 15.
+t_r = t_l + 7 * 1e6 / 15.
+events_all = dataset.data['1']['event']
 # indices = np.searchsorted(
 #             events_all[:, 3],
 #             np.array([t_l, t_r])
@@ -151,8 +152,29 @@ for i in range(0, len(a), 5):
 # cloud = PyntCloud(pd.DataFrame(data=data_pc))
 # cloud.to_file(os.path.join(output_dir, 'output_events.ply'))
 #
-# mano_layer = MANO(config['data']['smplx_path'], use_pca=False, is_rhand=True)
-#
+mano_layer = MANO(config['data']['smplx_path'], use_pca=False, is_rhand=True)
+
+HAND_JOINT_COLOR_Lst = [(0, 0, 0),
+                        (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+                        (0, 255, 0), (0, 255, 0), (0, 255, 0), (0, 255, 0),
+                        (0, 0, 255), (0, 0, 255), (0, 0, 255), (0, 0, 255),
+                        (128, 0, 128), (128, 0, 128), (128, 0, 128), (128, 0, 128),
+                        (128, 128, 0), (128, 128, 0), (128, 128, 0), (128, 128, 0)]
+
+for step in range(len(item[1])):
+    joints_2d = item[1][step]['2d_joints_rgb'][indices_change(1, 2)].numpy()
+    img = (np.ones((920, 1064, 3))*255).astype(np.uint8)
+    for joint_idx, kp in enumerate(joints_2d):
+        cv2.circle(img, (int(kp[0]), int(kp[1])), 4, HAND_JOINT_COLOR_Lst[joint_idx], -1)
+        if joint_idx % 4 == 1:
+            cv2.line(img, (int(joints_2d[0][0]), int(joints_2d[0][1])), (int(kp[0]), int(kp[1])),
+                     HAND_JOINT_COLOR_Lst[joint_idx], 2)  # connect to root
+        elif joint_idx != 0:
+            cv2.line(img, (int(joints_2d[joint_idx - 1][0]), int(joints_2d[joint_idx - 1][1])),
+                     (int(kp[0]), int(kp[1])),
+                     HAND_JOINT_COLOR_Lst[joint_idx], 2)  # connect to root
+    imageio.imwrite(os.path.join(output_dir, 'kps_{}.png'.format(step)), img.astype(np.uint8))
+
 # for step in range(len(item[1])):
 #     manos = item[1][step]['mano']
 #     mano_output = mano_layer(

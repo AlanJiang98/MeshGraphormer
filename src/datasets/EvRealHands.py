@@ -127,7 +127,7 @@ class EvRealHands(Dataset):
             self.seq_ids += all_sub_2_seq_ids[str(sub_id)]
         if self.config['exper']['debug']:
             if self.config['exper']['run_eval_only']:
-                seq_ids = ['1', '53', '4', '20'] #'52', '20', '21', '26', '27', '25']
+                seq_ids = ['1'] #''1', '53', 52', '20', '21', '26', '27', '25']
             else:
                 seq_ids = ['41', '18']#['24', '18']
             for seq_id in seq_ids:

@@ -50,12 +50,12 @@ exper:
   use_gt: False
   preprocess:
     left_window: [3000, 1000000]
-    ev_repre: 'eci' #'Lnes', 'eci'
+    ev_repre: 'LNES' #'Lnes', 'eci'
     event_range: 'num' # 'time'
     num_window: 7000
     num_var: 2000
     cam_view: 'event' # 'world', 'rgb', 'event
-    steps: 1
+    steps: 7
     segments: 1
   augment:
     geometry:
