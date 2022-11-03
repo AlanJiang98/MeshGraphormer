@@ -11,7 +11,7 @@ import argparse
 import os
 from os.path import dirname
 import os.path as op
-os.chdir('/userhome/alanjjp/Project/MeshGraphormer')
+# os.chdir('/userhome/alanjjp/Project/MeshGraphormer')
 # os.chdir(dirname(os.getcwd()))
 # import sys
 # sys.path.append(dirname(os.getcwd()))

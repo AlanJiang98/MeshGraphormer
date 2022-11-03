@@ -8,6 +8,7 @@ import src.modeling.data.config as cfg
 from src.modeling.hrnet.config import config as hrnet_config
 from src.modeling.hrnet.config import update_config as hrnet_update_config
 from src.modeling.hrnet.hrnet_cls_net_gridfeat import get_cls_net_gridfeat
+from src.modeling.resnet.resnet50_gridfeat import resnet50gridfeat
 # todo
 from src.modeling._mano import MANO
 from src.modeling._mano import Mesh as MeshSampler
@@ -24,6 +25,7 @@ from pytorch3d.renderer import (
     TexturesVertex
 )
 from pytorch3d.utils import cameras_from_opencv_projection
+import pdb
 
 
 class EvRGBStereo(torch.nn.Module):
@@ -47,6 +49,11 @@ class EvRGBStereo(torch.nn.Module):
             hrnet_update_config(hrnet_config, self.config['model']['backbone']['hrnet_yaml'])
             backbone = get_cls_net_gridfeat(hrnet_config, pretrained=self.config['model']['backbone']['hrnet_bb'])
             # logger.info('=> loading hrnet model')
+        elif self.config['model']['backbone']['arch'] == 'resnet50':
+            backbone = resnet50gridfeat()
+            res50_state_dict = torch.load(self.config['model']['backbone']['hrnet_bb'])
+            backbone.load_state_dict(res50_state_dict, strict=False)
+
         else:
             print("=> using pre-trained model '{}'".format(self.config['model']['backbone']['arch']))
             backbone = models.__dict__[self.config['model']['backbone']['arch']](pretrained=True)
