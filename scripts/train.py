@@ -740,6 +740,7 @@ def get_config():
     parser.add_argument('--resume_checkpoint', type=str, default='')
     parser.add_argument('--config_merge', type=str, default='')
     parser.add_argument('--run_eval_only', action='store_true')
+    parser.add_argument('--local_rank', type=int, default=0)
     parser.add_argument('--s', default=1.0, type=float, help='scale')
     parser.add_argument('--r', default=0., type=float, help='rotate')
     parser.add_argument('--output_dir', type=str,
