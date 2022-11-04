@@ -304,7 +304,7 @@ class EvRGBStereo(torch.nn.Module):
             }])
             if not self.config['exper']['run_eval_only']:
                 pred_vertices_sub = self.mesh_sampler.downsample(mano_output.vertices) - mano_output.joints[:, :1]
-                output[0].update({
+                output[0][0].update({
                     'pred_vertices_sub': pred_vertices_sub,
                 })
 
