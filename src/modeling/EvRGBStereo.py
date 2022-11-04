@@ -226,7 +226,14 @@ class EvRGBStereo(torch.nn.Module):
 
             if 'scene_weight' in self.config['model']['tfm'].keys() and self.config['model']['tfm']['scene_weight']:
                 self.avgpool = torch.nn.AdaptiveAvgPool2d((1, 1))
-                self.fc_scene_weight = torch.nn.Linear(1024, 2)
+                input_dim = 0
+                if self.config["model"]["backbone"]["arch"] == "resnet50":
+                    input_dim = 2048
+                elif self.config["model"]["backbone"]["arch"] == "resnet34":
+                    input_dim = 512
+                else:
+                    input_dim = 1024
+                self.fc_scene_weight = torch.nn.Linear(input_dim, 2)
                 self.softmax = torch.nn.Softmax(dim=-1)
 
             self.stereo_encoders = torch.nn.ModuleList()
@@ -262,8 +269,15 @@ class EvRGBStereo(torch.nn.Module):
             self.xyz_regressor = torch.nn.Linear(transformer_config_2["model_dim"], 3)
 
             # 1x1 Convolution
-            self.conv_1x1_ev = torch.nn.Conv2d(1024, transformer_config_1["model_dim"], kernel_size=1)
-            self.conv_1x1_rgb = torch.nn.Conv2d(1024, transformer_config_1["model_dim"], kernel_size=1)
+            input_dim = 0
+            if self.config["model"]["backbone"]["arch"] == "resnet50":
+                input_dim = 2048
+            elif self.config["model"]["backbone"]["arch"] == "resnet34":
+                input_dim = 512
+            else:
+                input_dim = 1024
+            self.conv_1x1_ev = torch.nn.Conv2d(input_dim, transformer_config_1["model_dim"], kernel_size=1)
+            self.conv_1x1_rgb = torch.nn.Conv2d(input_dim, transformer_config_1["model_dim"], kernel_size=1)
 
             # attention mask
             zeros_1 = torch.tensor(np.zeros((195, 21)).astype(bool))
