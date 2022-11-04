@@ -1,0 +1,161 @@
+data:
+  dataset_yaml:  './src/datasets/dataset_hfai.yaml' #'./src/datasets/dataset_hfai.yaml'
+  dataset: [ 'evrealhands'] #'interhand',,'evrealhands'
+  smplx_path: './models/mano' #'/userhome/alanjjp/data/smplx_models/mano'
+eval:
+  augment:
+    rot: 0.0
+    scale: 1.0
+  fast: false
+  fast_fps: 120
+  fast_window: 5000
+  multiscale_inference: false
+  output:
+    attention_map: true
+    errors: true
+    mesh: true
+    rendered: true
+    save: false
+    vis_rendered: event
+exper:
+  augment:
+    event_photometry:
+      colorjitter:
+        brightness:
+          thre:
+          - 0.6
+          - 5.0
+        p: 0.0
+      gauss:
+        p: 0.8
+        var:
+        - 0.05
+        - 0.2
+      gaussianblur:
+        kernel_size: 15
+        p: 0.0
+        sigma:
+        - 0.5
+        - 3.0
+      salt_pepper:
+        p: 0.15
+        rate: 0.1
+    geometry:
+      rot: 0.2
+      scale: 0.1
+      trans: 0.05
+    rgb_photometry:
+      colorjitter:
+        brightness:
+          thre:
+          - 0.6
+          - 5.0
+        p: 0.15
+      gauss:
+        p: 0.8
+        var:
+        - 0.1
+        - 0.2
+      gaussianblur:
+        kernel_size: 19
+        p: 0.15
+        sigma:
+        - 4
+        - 8
+      salt_pepper:
+        p: 0.0
+        rate: 0.1
+  bbox:
+    event:
+      size: 128
+    rate: 1.5
+    rgb:
+      size: 192
+  debug: false
+  device: cuda
+  distributed: false
+  loss:
+    2d_joints_event: 50.0
+    2d_joints_rgb: 50.0
+    3d_joints: 2000.0
+    3d_joints_from_mesh: 1000.0
+    label_smoothing: 0.1
+    scene: 10.0
+    seg_event: 10.0
+    seg_rgb: 10.0
+    vertices: 100.0
+    vertices_sub: 100.0
+  lr: 0.0002
+  num_train_epochs: 400
+  num_workers: 8
+  output_dir: ./output/final/1103/fast_rgb_aug_2
+  per_gpu_batch_size: 64
+  preprocess:
+    cam_view: rgb
+    ev_repre: LNES
+    event_range: num
+    left_window:
+    - 3000
+    - 1000000
+    num_var: 2000
+    num_window: 7000
+    segments: 1
+    steps: 1
+  resume_checkpoint: None
+  run_eval_only: false
+  seed: 88
+  supervision: true
+  use_gt: false
+model:
+  backbone:
+    arch: hrnet
+    hrnet_bb: models/hrnet/hrnetv2_w64_imagenet_pretrained.pth
+    hrnet_yaml: models/hrnet/cls_hrnet_w64_sgd_lr5e-2_wd1e-4_bs32_x100.yaml
+  bert_config: src/modeling/bert/bert-base-uncased/
+  method:
+    ere_usage:
+    - false
+    - true
+    - false
+    framework: encoder_decoder_based
+  tfm:
+    decoder_features:
+    - false
+    - true
+    - false
+    drop_out: 0.1
+    feedforward_dim:
+    - 1024
+    - 256
+    hidden_feat_dim:
+    - 1024
+    - 256
+    - 64
+    hidden_size: -1
+    input_feat_dim:
+    - 2051
+    - 512
+    - 128
+    intermediate_size: -1
+    iterations: 1
+    latent: all
+    mask: 0.0
+    mesh_type: hand
+    model_dim:
+    - 512
+    - 128
+    n_self_att_layers: 2
+    nhead: 8
+    num_attention_heads: 4
+    num_hidden_layers: 4
+    output_attentions: true
+    perceiver_layers: 2
+    pos_type: sine
+    scale: L
+    scene_weight: false
+    which_gcn:
+    - 0
+    - 0
+    - 1
+utils:
+  logging_steps: 10

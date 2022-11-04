@@ -1,0 +1,134 @@
+data:
+  dataset_yaml:  './src/datasets/dataset_hfai.yaml'
+  dataset: [ 'interhand','evrealhands'] #'interhand',,'evrealhands'
+  smplx_path: './models/mano' #'/userhome/alanjjp/data/smplx_models/mano'
+
+model:
+  bert_config: 'src/modeling/bert/bert-base-uncased/'
+  method:
+    framework: 'perceiver' #'encoder_decoder_based' 'encoder_based' 'perceiver'
+    ere_usage: [True, True, False]
+  tfm:
+    scale: 'L' # 'S', 'M', 'L'
+    model_dim: [512, 128]
+    feedforward_dim: [1024, 256]
+    pos_type: 'sine'
+    nhead: 8
+    latent: 'all' # 'rgb'
+    scene_weight: True # 3.2
+    n_self_att_layers: 2
+    iterations: 1
+    mask: 0.2
+    perceiver_layers: 2
+    decoder_features: [True, True, False]
+    output_attentions: True
+    drop_out: 0.1
+    mesh_type: 'hand'
+    num_hidden_layers: 4
+    num_attention_heads: 4
+    hidden_size: -1
+    intermediate_size: -1
+    input_feat_dim: [ 2051, 512, 128 ]
+    hidden_feat_dim: [ 1024,256,64 ]
+    which_gcn: [ 0, 0, 1 ]
+  backbone:
+    arch: 'hrnet' #'resnet50'
+    hrnet_yaml: 'models/hrnet/cls_hrnet_w64_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
+    hrnet_bb: 'models/hrnet/hrnetv2_w64_imagenet_pretrained.pth'
+#    hrnet_yaml: 'models/hrnet/cls_hrnet_w40_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
+#    hrnet_bb: 'models/hrnet/hrnetv2_w40_imagenet_pretrained.pth'
+
+exper:
+  debug: False
+  run_eval_only: False
+  resume_checkpoint: None
+  num_workers: 8
+  output_dir: './output'
+  per_gpu_batch_size: 40
+  lr: 0.0003
+  num_train_epochs: 300
+  device: 'cuda'
+  seed: 88
+  distributed: True
+  supervision: True
+  use_gt: False
+  preprocess:
+    left_window: [3000, 1000000]
+    ev_repre: 'LNES' #'Lnes', 'eci'
+    event_range: 'num' # 'time'
+    num_window: 7000
+    num_var: 2000
+    cam_view: 'rgb' # 'world', 'rgb', 'event
+    steps: 3 # 1 for fastmetro 3 for perceiver
+    segments: 1
+  augment:
+    geometry:
+      scale: 0.1
+      trans: 0.05
+      rot: 0.2
+    rgb_photometry:
+      colorjitter:
+        p: 0.15
+        brightness:
+          thre: [0.6, 5.]
+      gauss:
+        var: [0.1, 0.2]
+        p: 0.8
+      gaussianblur:
+        p: 0.15
+        kernel_size: 19
+        sigma: [4, 8]
+      salt_pepper:
+        p: 0.0
+        rate: 0.1
+    event_photometry:
+      colorjitter:
+        p: 0.0
+        brightness:
+          thre: [0.6, 5.]
+      gauss:
+        var: [0.05, 0.2]
+        p: 0.8
+      gaussianblur:
+        p: 0.0
+        kernel_size: 15
+        sigma: [0.5, 3.]
+      salt_pepper:
+        p: 0.15
+        rate: 0.1
+  bbox:
+    rate: 1.5
+    rgb:
+      size: 192
+    event:
+      size: 128
+  loss:
+    vertices: 100.0
+    vertices_sub: 100.0
+    3d_joints: 2000.0
+    3d_joints_from_mesh: 1000.0
+    seg_rgb: 10.0
+    seg_event: 10.0
+    2d_joints_rgb: 50.
+    2d_joints_event: 50.
+    label_smoothing: 0.1 #3.2
+    scene: 2. # 3.2
+
+eval:
+  fast: False
+  multiscale_inference: False
+  augment:
+    rot: 0
+    scale: 1.0
+  fast_fps: 120
+  fast_window: 5000
+  output:
+    save: False
+    mesh: True
+    attention_map: True
+    errors: True
+    rendered: True
+    vis_rendered: 'event' # view for visualization
+
+utils:
+  logging_steps: 10

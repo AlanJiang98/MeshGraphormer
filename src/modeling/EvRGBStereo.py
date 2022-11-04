@@ -24,6 +24,7 @@ from pytorch3d.renderer import (
     TexturesVertex
 )
 from pytorch3d.utils import cameras_from_opencv_projection
+from src.modeling.resnet.resnet_gridfeat import resnet50gridfeat, resnet34gridfeat
 
 
 class EvRGBStereo(torch.nn.Module):
@@ -39,7 +40,9 @@ class EvRGBStereo(torch.nn.Module):
     def create_backbone(self):
         # create backbone model
         if self.config['model']['method']['framework'] == 'eventhands':
-            res50_pretrained = models.resnet50(pretrained=True)
+            res50_pretrained = models.resnet50(pretrained=False)
+            res50_state_dict = torch.load(self.config['model']['backbone']['hrnet_bb'])
+            res50_pretrained.load_state_dict(res50_state_dict, strict=False)
             self.eventhands_encoder_main = torch.nn.Sequential(*list(res50_pretrained.children())[:-1])
             self.eventhands_encoder_fc = torch.nn.Linear(2048, 58)
             return None, None
@@ -47,8 +50,15 @@ class EvRGBStereo(torch.nn.Module):
             hrnet_update_config(hrnet_config, self.config['model']['backbone']['hrnet_yaml'])
             backbone = get_cls_net_gridfeat(hrnet_config, pretrained=self.config['model']['backbone']['hrnet_bb'])
             # logger.info('=> loading hrnet model')
+        elif self.config['model']['backbone']['arch'] == 'resnet50':
+            backbone = resnet50gridfeat()
+            backbone.load_state_dict(torch.load(self.config['model']['backbone']['hrnet_bb']),strict=False)
+            # logger.info('=> loading resnet50 model')
+        elif self.config['model']['backbone']['arch'] == 'resnet34':
+            backbone = resnet34gridfeat()
+            backbone.load_state_dict(torch.load(self.config['model']['backbone']['hrnet_bb']),strict=False)
         else:
-            print("=> using pre-trained model '{}'".format(self.config['model']['backbone']['arch']))
+            print("=> using pre-trained model '{}'".format(self.config['model']['backbone']['hrnet_bb']))
             backbone = models.__dict__[self.config['model']['backbone']['arch']](pretrained=True)
             # remove the last fc layer
             backbone = torch.nn.Sequential(*list(backbone.children())[:-1])
