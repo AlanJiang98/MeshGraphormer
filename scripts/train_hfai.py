@@ -229,8 +229,8 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
                         data_time.avg,
                         optimizer.param_groups[0]['lr'],
                         loss_sum.item(),
-                        loss_items['loss_3d_joints_0'].item(),
-                        loss_items["loss_vertices_0"].item(),                        
+                        loss_items.get('loss_3d_joints_0').item() if 'loss_3d_joints_0' in loss_items.keys() else 0,
+                        loss_items.get("loss_vertices_0").item() if 'loss_vertices_0' in loss_items.keys() else 0,                        
                     )
                 )
 

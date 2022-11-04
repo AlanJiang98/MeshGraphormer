@@ -11,7 +11,7 @@ import argparse
 import os
 from os.path import dirname
 import os.path as op
-os.chdir('/userhome/alanjjp/Project/MeshGraphormer')
+# os.chdir('/userhome/alanjjp/Project/MeshGraphormer')
 # os.chdir(dirname(os.getcwd()))
 # import sys
 # sys.path.append(dirname(os.getcwd()))
@@ -222,11 +222,13 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
                         ['eta: {eta}', 'epoch: {ep}', 'iter: {iter}', 'max mem : {memory:.0f}', ]
                     ).format(eta=eta_string, ep=epoch, iter=iteration,
                              memory=torch.cuda.max_memory_allocated() / 1024.0 / 1024.0)
-                    + '   compute: {:.4f}, data: {:.4f}, lr: {:.6f} loss: {:.6f}'.format(
+                    + '   compute: {:.4f}, data: {:.4f}, lr: {:.6f} loss: {:.6f} loss_joints: {:.6f} loss_vertices {:.6f}'.format(
                         batch_time.avg,
                         data_time.avg,
                         optimizer.param_groups[0]['lr'],
-                        log_losses.avg
+                        loss_sum.item(),
+                        loss_items.get('loss_3d_joints_0').item() if 'loss_3d_joints_0' in loss_items.keys() else 0,
+                        loss_items.get("loss_vertices_0").item() if 'loss_vertices_0' in loss_items.keys() else 0,                        
                     )
                 )
 
