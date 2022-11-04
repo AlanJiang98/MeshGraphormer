@@ -157,8 +157,8 @@ class EvRealHands(Dataset):
             if self.config['exper']['run_eval_only']:
                 seq_ids = ['1'] #''1', '53', 52', '20', '21', '26', '27', '25']
             else:
-                # seq_ids = ['41', '18']#['24', '18']
-                seq_ids = self.seq_ids
+                seq_ids = ['41', '18', '24']#['24', '18']
+                # seq_ids = self.seq_ids
             for seq_id in seq_ids:
                 data = self.get_events_annotations_per_sequence( self.tar_name, osp.join(self.temp_path,"EvRealHands" ,seq_id),
                                                             not self.config['exper']['run_eval_only'], self.config['eval']['fast'], self.folder)
@@ -235,7 +235,8 @@ class EvRealHands(Dataset):
             print("img not equal")
             pdb.set_trace()
         else:
-            print(f"img equal paths: {path} {self.tar_name + '/' + path}")
+            # print(f"img equal paths: {path} {self.tar_name + '/' + path}")
+            pass
         if not isinstance(img, np.ndarray):
             raise IOError("Fail to read %s" % path)
         if order == 'RGB':
@@ -668,7 +669,7 @@ class EvRealHands(Dataset):
     def __getitem__(self, idx):
         frames_output, meta_data_output = [], []
         seq_id, cam_pair, annot_id = self.get_info_from_sample_id(idx)
-        print(f"load ffr result {seq_id}, {cam_pair}, {annot_id}")
+        # print(f"load ffr result {seq_id}, {cam_pair}, {annot_id}")
         test_fast = self.config['exper']['run_eval_only'] and \
                     self.data[seq_id]['annot']['motion_type'] == 'fast'
         aug_params = self.get_augment_param()
@@ -703,7 +704,7 @@ class EvRealHands(Dataset):
             T_ = 1e6 / 15.
 
             t_target = delta_time + int(annot_id) * T_
-            print(f"hfai t_target: {t_target}")
+            # print(f"hfai t_target: {t_target}")
 
             ev_frames = []
 
@@ -711,7 +712,7 @@ class EvRealHands(Dataset):
                 t_l = t_target - T_ + segment / segments * T_
                 t_r = t_target - T_ + (segment+1) / segments * T_
                 indices_ev = self.get_indices_from_timestamps([t_l, t_r], seq_id)
-                print(f"hfai indices_ev: {indices_ev}")
+                # print(f"hfai indices_ev: {indices_ev}")
                 # print('segment', segment, indices_ev)
                 ev_frame = self.get_event_repre(seq_id, indices_ev)
                 # ev_frame = torch.cat([ev_frame.permute(1, 2, 0), torch.zeros((260, 346, 1))], dim=2)

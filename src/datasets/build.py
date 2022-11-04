@@ -3,7 +3,12 @@ Copyright (c) Microsoft Corporation.
 Licensed under the MIT license.
 
 """
-
+import numpy as np
+import multiprocessing as mp
+import cv2
+import copy
+import imageio
+import matplotlib.pyplot as plt
 
 import os.path as op
 import torch
@@ -106,12 +111,35 @@ def make_hand_data_loader(config, start_iter=0):
     '''
     is_train = False if config['exper']['run_eval_only']==True else True
     dataset, dataset_test = build_hand_dataset(config, is_train=is_train)
-    for i in trange(len(dataset)):
+    for i in trange(7, len(dataset), 10):
         result1 = dataset.__getitem__(i)
         result2 = dataset_test.__getitem__(i)
-        # pdb.set_trace()
+        # # pdb.set_trace()
+        #
+        # # frame compare
+        #
+        # step = 0
+        # # annot compare
+        # if str(result1[1][step]) == str(result2[1][step]):
+        #     # pdb.set_trace()
+        #     continue
+        # else:
+        #     print('error')
+        #
+        # key = 'rgb'
+        # if not (result1[0][step][key] == result2[0][step][key]).all():
+        #     print('error')
+        #     result1_ = dataset.__getitem__(i)
+        #     result2_ = dataset_test.__getitem__(i)
+        #
+        # key = 'ev_frames'
+        # if not (result1[0][step][key][-1] == result2[0][step][key][-1]).all():
+        #     print('error')
+        #     result1__ = dataset.__getitem__(i)
+        #     result2__ = dataset_test.__getitem__(i)
+
         for j in range(len(result1)):
-            if j ==1:
+            if j == 1:
                 if str(result1[j][0]) == str(result2[j][0]):
                     # pdb.set_trace()
                     continue
@@ -119,23 +147,55 @@ def make_hand_data_loader(config, start_iter=0):
                     print('error')
                     pdb.set_trace()
             for k in range(len(result1[j])):
-                
+
                 for key in result1[j][k].keys():
-                    if key == 'delta_time': #or key == "ev_frames":
+                    if key == 'delta_time':  # or key == "ev_frames":
                         continue
                     if type(result1[j][k][key]) in [float, int]:
                         continue
-                    if len(result1[j][k][key])>=1 and len(result2[j][k][key]) == len(result1[j][k][key]):
+                    if len(result1[j][k][key]) >= 1 and len(result2[j][k][key]) == len(result1[j][k][key]):
                         for step in range(len(result1[j][k][key])):
                             if not len(result2[j][k][key]) == len(result1[j][k][key]):
                                 print("error len")
+                                result1_ = dataset.__getitem__(i)
+                                result2_ = dataset_test.__getitem__(i)
                                 pdb.set_trace()
                             if not (result1[j][k][key][step] == result2[j][k][key][step]).all():
                                 print('error 1')
+                                result1_ = dataset.__getitem__(i)
+                                result2_ = dataset_test.__getitem__(i)
                                 pdb.set_trace()
                     else:
                         print("error shape")
                         pdb.set_trace()
+
+
+        #
+        # for j in range(len(result1)):
+        #     if j ==1:
+        #         if str(result1[j][0]) == str(result2[j][0]):
+        #             # pdb.set_trace()
+        #             continue
+        #         else:
+        #             print('error')
+        #     for k in range(len(result1[j])):
+        #
+        #         for key in result1[j][k].keys():
+        #             if key == 'delta_time': #or key == "ev_frames":
+        #                 continue
+        #             if type(result1[j][k][key]) in [float, int]:
+        #                 continue
+        #             if len(result1[j][k][key])>=1 and len(result2[j][k][key]) == len(result1[j][k][key]):
+        #                 for step in range(len(result1[j][k][key])):
+        #                     if not len(result2[j][k][key]) == len(result1[j][k][key]):
+        #                         print("error len")
+        #                         pdb.set_trace()
+        #                     if not (result1[j][k][key][step] == result2[j][k][key][step]).all():
+        #                         print('error 1')
+        #                         pdb.set_trace()
+        #             else:
+        #                 print("error shape")
+        #                 pdb.set_trace()
     print('check done!')
     pdb.set_trace()
     

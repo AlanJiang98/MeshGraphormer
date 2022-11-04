@@ -129,7 +129,7 @@ class EvRealHandsWeb(Dataset):
             if self.config['exper']['run_eval_only']:
                 seq_ids = ['1'] #''1', '53', 52', '20', '21', '26', '27', '25']
             else:
-                seq_ids = self.seq_ids#['41', '18']#['24', '18']
+                seq_ids = ['41', '18', '24']#['24', '18']self.seq_ids#
             for seq_id in seq_ids:
                 data = self.get_events_annotations_per_sequence(osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id),
                                                             not self.config['exper']['run_eval_only'], self.config['eval']['fast'])
@@ -196,7 +196,7 @@ class EvRealHandsWeb(Dataset):
         return seq_id, cam_pair, annot_id
 
     def load_img(self, path, order='RGB'):
-        print("Web load image from {}".format(path))
+        # print("Web load image from {}".format(path))
         img = cv2.imread(path, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
         if not isinstance(img, np.ndarray):
             raise IOError("Fail to read %s" % path)
@@ -630,7 +630,7 @@ class EvRealHandsWeb(Dataset):
     def __getitem__(self, idx):
         frames_output, meta_data_output = [], []
         seq_id, cam_pair, annot_id = self.get_info_from_sample_id(idx)
-        print(f"load web result {seq_id}, {cam_pair}, {annot_id}")
+        # print(f"load web result {seq_id}, {cam_pair}, {annot_id}")
         test_fast = self.config['exper']['run_eval_only'] and \
                     self.data[seq_id]['annot']['motion_type'] == 'fast'
         aug_params = self.get_augment_param()
@@ -665,7 +665,7 @@ class EvRealHandsWeb(Dataset):
             T_ = 1e6 / 15.
 
             t_target = delta_time + int(annot_id) * T_
-            print("web t_target", t_target)
+            # print("web t_target", t_target)
 
             ev_frames = []
 
@@ -674,7 +674,7 @@ class EvRealHandsWeb(Dataset):
                 t_r = t_target - T_ + (segment+1) / segments * T_
                 indices_ev = self.get_indices_from_timestamps([t_l, t_r], seq_id)
                 # print('segment', segment, indices_ev)
-                print(f"web indices_ev: {indices_ev}")
+                # print(f"web indices_ev: {indices_ev}")
                 ev_frame = self.get_event_repre(seq_id, indices_ev)
                 # ev_frame = torch.cat([ev_frame.permute(1, 2, 0), torch.zeros((260, 346, 1))], dim=2)
                 ev_frames.append(ev_frame)
