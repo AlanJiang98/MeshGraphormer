@@ -807,8 +807,11 @@ def main(config):
             _model = torch.load(config['exper']['resume_checkpoint'])
         else:
             _model = EvRGBStereo(config=config)
-            state_dict = torch.load(config['exper']['resume_checkpoint'])
-            _model.load_state_dict(state_dict, strict=False)
+            state_dict = torch.load(config['exper']['resume_checkpoint'], map_location=torch.device('cpu'))
+            if config['exper']['resume_checkpoint'].split('.')[-1] == 'ckpt':
+                _model.load_state_dict(state_dict["model"], strict=False)
+            else:
+                _model.load_state_dict(state_dict, strict=False)
             del state_dict
             gc.collect()
             torch.cuda.empty_cache()

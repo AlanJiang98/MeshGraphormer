@@ -225,7 +225,46 @@ def event_to_LNES(event_tmp, height=260, width=346, count=False, interpolate=Fal
         events, weights = event_tmp, ts
     if events.dtype is not torch.long:
         xyp = events[:, :3].clone().long()
-    img[xyp[:, 2], xyp[:, 1], xyp[:, 0]] = weights
+    # img[xyp[:, 2], xyp[:, 1], xyp[:, 0]] = weights
+    # img_new = img.clone()
+    img_new_arg = img  # .clone()
+    # t_s = time.time()
+    # img[xyp[:, 2], xyp[:, 1], xyp[:, 0]] = weights
+    # t_1 = time.time() - t_s
+    # print('time 1', t_1)
+    # t_s = time.time()
+    # for i in range(xyp.shape[0]):
+    #     img_new[xyp[i, 2], xyp[i, 1], xyp[i, 0]] = weights[i]
+    # t_2 = time.time() - t_s
+    # print('time 2', t_2)
+
+    # t_s = time.time()
+    xyp_ = xyp.numpy()
+    weights_ = weights.numpy()
+    eventforsort = np.zeros(xyp_.shape[0],
+                            dtype=[('p', xyp_.dtype), ('y', xyp_.dtype), ('x', xyp_.dtype), ('w', weights_.dtype)])
+    eventforsort[:]['p'] = xyp_[:, 2]
+    eventforsort[:]['x'] = xyp_[:, 0]
+    eventforsort[:]['y'] = xyp_[:, 1]
+    eventforsort[:]['w'] = weights_
+    indices = np.argsort(eventforsort, order=('p', 'y', 'x', 'w'))
+    xyp_ = xyp_[indices]  #
+    weights_ = weights_[indices]
+    y_bias = xyp_[1:] - xyp_[:-1]
+    breakpoints = np.where(np.sum(np.abs(y_bias), axis=1) != 0)
+    # breakpoints = np.concatenate([breakpoints[0], np.array([xyp_.shape[0] - 1])])
+    # events[:,1]
+    xyp = torch.tensor(xyp_[breakpoints], dtype=torch.long)
+    weights = torch.tensor(weights_[breakpoints])
+    # xyp = xyp[breakpoints]
+    # weights = weights[breakpoints]
+    img_new_arg[xyp[:, 2], xyp[:, 1], xyp[:, 0]] = weights
+    img_new_arg[xyp_[-1, 2].item(), xyp_[-1, 1].item(), xyp_[-1, 0].item()] = weights_[-1].item()
+    # t_3 = time.time() - t_s
+    # print('time 3', t_3)
+    # print('yes?', (img == img_new).all())
+    # print('yes??', (img_new_arg == img_new).all())
+    img = img_new_arg
     if count:
         #todo repre check
         weight_polarity = event_tmp[:, 2] * 2 - 1
