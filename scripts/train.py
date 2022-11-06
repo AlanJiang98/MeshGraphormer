@@ -645,7 +645,7 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
             #             imageio.imwrite(op.join(img_dir, '{}.jpg'.format(meta_data[0]['annot_id'][i].item())),
             #                             (img_render[i].detach().cpu().numpy() * 255).astype(np.uint8))
 
-            if (iteration - 1) % config['utils']['logging_steps'] == 0.5:
+            if (iteration - 1) % config['utils']['logging_steps'] == 0:
                 eta_seconds = batch_time.avg * (len(val_dataloader_normal) / config['exper']['per_gpu_batch_size'] - iteration)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
                 if is_main_process():
@@ -819,7 +819,7 @@ def get_config():
     parser.add_argument('--resume_checkpoint', type=str, default='')
     parser.add_argument('--config_merge', type=str, default='')
     parser.add_argument('--run_eval_only', action='store_true')
-    parser.add_argument('--local_rank', type=int, default=0)
+    # parser.add_argument('--local_rank', type=int, default=0)
     parser.add_argument('--s', default=1.0, type=float, help='scale')
     parser.add_argument('--r', default=0., type=float, help='rotate')
     parser.add_argument('--output_dir', type=str,
@@ -843,8 +843,8 @@ def get_config():
         config['eval']['augment'] = {}
     config['eval']['augment']['scale'] = args.s
     config['eval']['augment']['rot'] = args.r
-    config['data']['dataset_yaml'] = '/userhome/alanjjp/Project/MeshGraphormer/src/datasets/dataset.yaml'
-    config['data']['smplx_path'] = '/userhome/alanjjp/data/smplx_models/mano'
+    # config['data']['dataset_yaml'] = '/userhome/alanjjp/Project/MeshGraphormer/src/datasets/dataset.yaml'
+    # config['data']['smplx_path'] = '/userhome/alanjjp/data/smplx_models/mano'
     return config
 
 

@@ -383,7 +383,7 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
             batch_time.update(time.time() - end)
             end = time.time()
 
-            if iteration == 0:
+            if iteration == 0 and config['model']['method']['framework'] != 'encoder_based':
                 flops = FlopCountAnalysis(EvRGBStereo_model, frames)
                 print('FLOPs: {} G FLOPs'.format(flops.total() / batch_size / 1024**3))
                 file.write('FLOPs: {} G FLOPs\n'.format(flops.total() / batch_size / 1024**3))
@@ -504,32 +504,32 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
                 #         # todo draw attention map
                 #         pass
                 #
-                if config['eval']['output']['rendered']:
-                    key = config['eval']['output']['vis_rendered']
-                    if key == 'rgb':
-                        img_bg = frames[0][key+'_ori']
-                        _, h, w, _ = img_bg.shape
-                        hw = [h, w]
-                    else:
-                        img_bg = frames[0][key + '_ori'][-1]
-                        _, h, w, _ = img_bg.shape
-                        hw = [h, w]
-                    # print(meta_data[0]['K_'+key].device)
-                    # print(img_bg.device)
-                    # print(predicted_meshes.device)
-                    img_render = render.visualize(
-                        K=meta_data[0]['K_'+key].detach(),
-                        R=meta_data[0]['R_'+key].detach(),
-                        t=meta_data[0]['t_'+key].detach(),
-                        hw=hw,
-                        img_bg=img_bg.cpu(),
-                        vertices=predicted_meshes.detach(),
-                    )
-                    for i in range(img_render.shape[0]):
-                        img_dir = op.join(config['exper']['output_dir'], str(meta_data[0]['seq_id'][i].item()), 'rendered')
-                        mkdir(img_dir)
-                        imageio.imwrite(op.join(img_dir, '{}.jpg'.format(meta_data[0]['annot_id'][i].item())),
-                                        (img_render[i].detach().cpu().numpy() * 255).astype(np.uint8))
+                # if config['eval']['output']['rendered']:
+                #     key = config['eval']['output']['vis_rendered']
+                #     if key == 'rgb':
+                #         img_bg = frames[0][key+'_ori']
+                #         _, h, w, _ = img_bg.shape
+                #         hw = [h, w]
+                #     else:
+                #         img_bg = frames[0][key + '_ori'][-1]
+                #         _, h, w, _ = img_bg.shape
+                #         hw = [h, w]
+                #     # print(meta_data[0]['K_'+key].device)
+                #     # print(img_bg.device)
+                #     # print(predicted_meshes.device)
+                #     img_render = render.visualize(
+                #         K=meta_data[0]['K_'+key].detach(),
+                #         R=meta_data[0]['R_'+key].detach(),
+                #         t=meta_data[0]['t_'+key].detach(),
+                #         hw=hw,
+                #         img_bg=img_bg.cpu(),
+                #         vertices=predicted_meshes.detach(),
+                #     )
+                #     for i in range(img_render.shape[0]):
+                #         img_dir = op.join(config['exper']['output_dir'], str(meta_data[0]['seq_id'][i].item()), 'rendered')
+                #         mkdir(img_dir)
+                #         imageio.imwrite(op.join(img_dir, '{}.jpg'.format(meta_data[0]['annot_id'][i].item())),
+                #                         (img_render[i].detach().cpu().numpy() * 255).astype(np.uint8))
 
             if (iteration - 1) % config['utils']['logging_steps'] == 0:
                 eta_seconds = batch_time.avg * (len(val_dataloader_normal) / config['exper']['per_gpu_batch_size'] - iteration)
@@ -763,7 +763,48 @@ def main(config):
                             f.write(fp.read())
 
         synchronize()
+    else:
+        temp_path = os.path.join(os.getcwd(), 'temp')
+        folder = PackedFolder(config['data']['dataset_info']['evrealhands']['ffr_dir'])
+        if os.path.exists(temp_path) and os.path.exists(os.path.join(temp_path, "EvRealHands", '0', "event.aedat4")):
+            pass
+        else:
+            os.makedirs(temp_path)
+            # tar = tarfile.open(config['data']['dataset_info']['evrealhands']['data_dir'],"r")
+            # name_list =[i for i in tar.getmembers() if i.name.endswith(".aedat4")]
+            # tar.extractall(path=temp_path, members=name_list)
+            seq_ids = folder.list("")
+            # def write_event(seq_id_):
+            #     event_path = os.path.join(seq_id_, "event.aedat4")
+            #     fp = io.BytesIO(folder.read_one(event_path))
+            #     with open(os.path.join(temp_path, "EvRealHands",seq_id_,"event.aedat4"), 'wb') as f:
+            #         f.write(fp.read())
+            # pool = mp.Pool(mp.cpu_count())
+            for seq_id in seq_ids:
+                if folder.is_dir(seq_id):
+                    if not os.path.exists(os.path.join(temp_path, seq_id)):
+                        os.makedirs(os.path.join(temp_path, "EvRealHands", seq_id))
 
+                    #         pool.apply_async(
+                    #             write_event,
+                    #             args=(
+                    #                 seq_id,
+                    #                 folder,
+                    #                 temp_path,
+                    #             ),
+                    #         )
+
+                    # pool.close()
+                    # pool.join()
+                    # for seq_id in seq_ids:
+                    #     if folder.is_dir(seq_id):
+                    #         if not os.path.exists(os.path.join(temp_path, "EvRealHands",seq_id,"event.aedat4")):
+                    #             print(f"error {seq_id}")
+
+                    event_path = os.path.join(seq_id, "event.aedat4")
+                    fp = io.BytesIO(folder.read_one(event_path))
+                    with open(os.path.join(temp_path, "EvRealHands", seq_id, "event.aedat4"), 'wb') as f:
+                        f.write(fp.read())
     mkdir(config['exper']['output_dir'])
     # mkdir(os.path.join(config['exper']['output_dir'], 'logger'))
 
@@ -782,8 +823,18 @@ def main(config):
             config['exper']['resume_checkpoint'] != 'None' and 'state_dict' not in config['exper']['resume_checkpoint']:
         # if only run eval, load checkpoint
         print("Evaluation: Loading from checkpoint {}".format(config['exper']['resume_checkpoint']))
-        _model = torch.load(config['exper']['resume_checkpoint'])
-
+        if config['exper']['resume_checkpoint'].split('/')[-1] == 'model.bin':
+            _model = torch.load(config['exper']['resume_checkpoint'])
+        else:
+            _model = EvRGBStereo(config=config)
+            state_dict = torch.load(config['exper']['resume_checkpoint'], map_location=torch.device('cpu'))
+            if config['exper']['resume_checkpoint'].split('.')[-1] == 'ckpt':
+                _model.load_state_dict(state_dict["model"], strict=False)
+            else:
+                _model.load_state_dict(state_dict, strict=False)
+            del state_dict
+            gc.collect()
+            torch.cuda.empty_cache()
     else:
 
         # build network

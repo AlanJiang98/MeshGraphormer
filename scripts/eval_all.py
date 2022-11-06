@@ -9,11 +9,9 @@ if __name__ == "__main__":
     yaml_path = os.path.join(args.output_dir, "train.yaml")
     for ckpt_folder in os.listdir(args.output_dir):        
         if "checkpoint" in ckpt_folder:
-            ckpt_path = os.path.join(args.output_dir, ckpt_folder, "state_dict.bin")
 
-        cmd = f"CUDA_VISIBLE_DEVICES=5 python ./scripts/train.py \
-                    --config {yaml_path} \
-                    --resume_checkpoint {ckpt_path} \
-                    --config_merge ./src/configs/eval_evrealhands.yaml --run_eval_only \
-                    --output_dir {args.result_dir}"
-        os.system(cmd)
+            ckpt_path = os.path.join(args.output_dir, ckpt_folder, "state_dict.bin")
+            result_path = os.path.join(args.result_dir, ckpt_folder)
+            print(f"Evaluating {ckpt_path}.....")
+            cmd = f"CUDA_VISIBLE_DEVICES=3 python ./scripts/train.py --config {yaml_path} --resume_checkpoint {ckpt_path} --config_merge ./src/configs/hfai/eval_evrealhands.yaml --run_eval_only --output_dir {result_path}"
+            os.system(cmd)

@@ -1,11 +1,11 @@
 data:
-  dataset_yaml: './src/datasets/dataset.yaml'
+  dataset_yaml: './src/datasets/dataset_hfai.yaml'
   dataset: ['evrealhands']
-  smplx_path: '/userhome/alanjjp/data/smplx_models/mano'
+  smplx_path: './models/mano'
 exper:
   debug: False
-  num_workers: 4
-  per_gpu_batch_size: 16
+  num_workers: 8
+  per_gpu_batch_size: 40
   preprocess:
     ev_repre: 'LNES' #'Lnes', 'eci'
     event_range: 'num' # 'time'
