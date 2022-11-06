@@ -381,7 +381,7 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
             batch_time.update(time.time() - end)
             end = time.time()
 
-            if iteration == 0:
+            if iteration == 0 and config['model']['method']['framework'] != 'encoder_based':
                 flops = FlopCountAnalysis(EvRGBStereo_model, frames)
                 print('FLOPs: {} G FLOPs'.format(flops.total() / batch_size / 1024**3))
                 file.write('FLOPs: {} G FLOPs\n'.format(flops.total() / batch_size / 1024**3))
@@ -394,7 +394,7 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
                     print('each CNN params: {} M'.format(cnn_params))
                     file.write('each CNN params: {} M\n'.format(cnn_params))
 
-            print(meta_data[0]['seq_type'], preds[0][0]['scene_weight'])
+            # print(meta_data[0]['seq_type'], preds[0][0]['scene_weight'])
 
             for step in range(steps):
 
@@ -819,6 +819,7 @@ def get_config():
     parser.add_argument('--resume_checkpoint', type=str, default='')
     parser.add_argument('--config_merge', type=str, default='')
     parser.add_argument('--run_eval_only', action='store_true')
+    parser.add_argument('--local_rank', type=int, default=0)
     parser.add_argument('--s', default=1.0, type=float, help='scale')
     parser.add_argument('--r', default=0., type=float, help='rotate')
     parser.add_argument('--output_dir', type=str,
@@ -972,8 +973,11 @@ def main(config):
             _model = torch.load(config['exper']['resume_checkpoint'])
         else:
             _model = EvRGBStereo(config=config)
-            state_dict = torch.load(config['exper']['resume_checkpoint'])
-            _model.load_state_dict(state_dict, strict=False)
+            state_dict = torch.load(config['exper']['resume_checkpoint'], map_location=torch.device('cpu'))
+            if config['exper']['resume_checkpoint'].split('.')[-1] == 'ckpt':
+                _model.load_state_dict(state_dict["model"], strict=False)
+            else:
+                _model.load_state_dict(state_dict, strict=False)
             del state_dict
             gc.collect()
             torch.cuda.empty_cache()
