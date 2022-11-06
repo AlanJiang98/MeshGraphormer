@@ -1,6 +1,6 @@
 python -m torch.distributed.launch --nproc_per_node=8 scripts/train_hfai.py \
-    --config src/configs/hfai/final/g-rgb.yaml \
-    --output_dir output/final/g-rgb
+    --config src/configs/hfai/final/p-full-S.yaml \
+    --output_dir output/final/p-full-S
 
 
 # CUDA_VISIBLE_DEVICES=7 python scripts/train.py \

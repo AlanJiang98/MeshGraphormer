@@ -1,6 +1,6 @@
 python -m torch.distributed.launch --nproc_per_node=8 scripts/train_hfai.py \
-    --config src/configs/hfai/final/evhands.yaml \
-    --output_dir output/final/evhands
+    --config src/configs/hfai/final/p-full-no-bright.yaml \
+    --output_dir output/final/p-full-no-bright
 
 
 # CUDA_VISIBLE_DEVICES=7 python scripts/train.py \
