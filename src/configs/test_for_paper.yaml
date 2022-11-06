@@ -55,7 +55,7 @@ exper:
     num_window: 7000
     num_var: 2000
     cam_view: 'event' # 'world', 'rgb', 'event
-    steps: 7
+    steps: 1
     segments: 1
   augment:
     geometry:

@@ -320,7 +320,7 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
             batch_time.update(time.time() - end)
             end = time.time()
 
-            if iteration == 0:
+            if iteration == 0 and config['model']['method']['framework'] != 'encoder_based':
                 flops = FlopCountAnalysis(EvRGBStereo_model, frames)
                 print('FLOPs: {} G FLOPs'.format(flops.total() / batch_size / 1024**3))
                 file.write('FLOPs: {} G FLOPs\n'.format(flops.total() / batch_size / 1024**3))
