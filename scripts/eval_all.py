@@ -13,5 +13,8 @@ if __name__ == "__main__":
             ckpt_path = os.path.join(args.output_dir, ckpt_folder, "state_dict.bin")
             result_path = os.path.join(args.result_dir, ckpt_folder)
             print(f"Evaluating {ckpt_path}.....")
-            cmd = f"CUDA_VISIBLE_DEVICES=3 python ./scripts/train.py --config {yaml_path} --resume_checkpoint {ckpt_path} --config_merge ./src/configs/hfai/eval_evrealhands.yaml --run_eval_only --output_dir {result_path}"
+            if os.path.exists(os.path.join(result_path, "error_joints.txt")):
+                print(f"Already evaluated {ckpt_path}.....")
+                continue
+            cmd = f"CUDA_VISIBLE_DEVICES=3 python ./scripts/train_hfai.py --config {yaml_path} --resume_checkpoint {ckpt_path} --config_merge ./src/configs/hfai/eval_evrealhands_hfai.yaml --run_eval_only --output_dir {result_path}"
             os.system(cmd)

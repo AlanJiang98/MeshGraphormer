@@ -845,6 +845,10 @@ def main(config):
             latest_dict = torch.load(os.path.join(config['exper']['output_dir'], 'latest.ckpt'),map_location=torch.device('cpu'))
             _model.load_state_dict(latest_dict["model"])
             start_iter = latest_dict['iteration']
+            start_epoch = latest_dict['epoch']
+            if start_epoch >=280:
+                print("finished")
+                return
             del latest_dict
             gc.collect()
             torch.cuda.empty_cache()

@@ -1,5 +1,5 @@
 data:
-  dataset_yaml:  './src/datasets/dataset.yaml'
+  dataset_yaml:  './src/datasets/dataset_hfai.yaml'
   dataset: ['interhand','evrealhands'] #'interhand',,'evrealhands'
   smplx_path: './models/mano' #'/userhome/alanjjp/data/smplx_models/mano'
 
@@ -9,7 +9,7 @@ model:
     framework: 'perceiver' #'encoder_decoder_based' 'encoder_based' 'perceiver'
     ere_usage: [True, True, False]
   tfm:
-    scale: 'S' # 'S', 'M', 'L'
+    scale: 'L' # 'S', 'M', 'L'
     model_dim: [512, 128]
     feedforward_dim: [1024, 256]
     pos_type: 'sine'
@@ -32,9 +32,9 @@ model:
     hidden_feat_dim: [ 1024,256,64 ]
     which_gcn: [ 0, 0, 1 ]
   backbone:
-    arch: 'resnet34' #'resnet50'
+    arch: 'hrnet' #'resnet50'
     hrnet_yaml: 'models/hrnet/cls_hrnet_w64_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
-    hrnet_bb: 'models/resnet/resnet34-b627a593.pth'
+    hrnet_bb: 'models/hrnet/hrnetv2_w64_imagenet_pretrained.pth'
 #    hrnet_yaml: 'models/hrnet/cls_hrnet_w40_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
 #    hrnet_bb: 'models/hrnet/hrnetv2_w40_imagenet_pretrained.pth'
 
@@ -75,7 +75,7 @@ exper:
         var: [0.1, 0.2]
         p: 0.8
       gaussianblur:
-        p: 0.15
+        p: 0.0
         kernel_size: 19
         sigma: [4, 8]
       salt_pepper:

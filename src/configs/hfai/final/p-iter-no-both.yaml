@@ -17,9 +17,9 @@ model:
     latent: 'all' # 'rgb'
     scene_weight: False # 3.2
     n_self_att_layers: 2
-    iterations: 1
-    mask: 0.2
-    perceiver_layers: 2
+    iterations: 2
+    mask: 0.0
+    perceiver_layers: 1
     decoder_features: [True, True, False]
     output_attentions: True
     drop_out: 0.1
