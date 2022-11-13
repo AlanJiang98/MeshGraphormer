@@ -84,6 +84,7 @@ class EvRealHands(Dataset):
         # indices = np.diff(mano_ids_np) == 1
         # annot['sample_ids'] = [str(id) for id in mano_ids_np[1:][indices]]
         # deal with static hand pose
+        #todo
         mano_ids = mano_ids[20:-5]
         annot['sample_ids'] = [str(id) for id in mano_ids]
         K_old = np.array(annot['camera_info']['event']['K_old'])
@@ -127,7 +128,8 @@ class EvRealHands(Dataset):
             self.seq_ids += all_sub_2_seq_ids[str(sub_id)]
         if self.config['exper']['debug']:
             if self.config['exper']['run_eval_only']:
-                seq_ids = ['1'] #''1', '53', 52', '20', '21', '26', '27', '25']
+                # todo change!
+                seq_ids = ['20', '53'] #''1', '53', 52', '20', '21', '26', '27', '25']
             else:
                 seq_ids = ['41', '18']#['24', '18']
             for seq_id in seq_ids:
@@ -743,6 +745,7 @@ class EvRealHands(Dataset):
             lt_rgb, sc_rgb, rgb_crop = self.crop(bbox_rgb, np.array(rgb), self.config['exper']['bbox']['rgb']['size'], hw=[920, 1064])
             rgb_crop = torch.tensor(rgb_crop, dtype=torch.float32)
             # self.plotshow(rgb_crop)
+            rgb_crop_un_normal = rgb_crop
             rgb_crop = self.normalize_img(rgb_crop.permute(2, 0, 1)).permute(1, 2, 0)
             # self.plotshow(rgb_crop)
 
@@ -784,6 +787,7 @@ class EvRealHands(Dataset):
                 frames.update(
                     {
                         'rgb_ori': rgb,
+                        'rgb_crop_un_normal': rgb_crop_un_normal,
                         'event_ori': ev_frames,#[torch.tensor(frame, dtype=torch.float32) for frame in ev_frames],
                     }
                 )

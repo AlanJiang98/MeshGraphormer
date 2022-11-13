@@ -12,7 +12,7 @@ exper:
     num_window: 7000
 
 eval:
-  fast_fps: 15 #120
+  fast_fps: 30 #120
   fast_window: 5000
   multiscale: False
   output:

@@ -304,8 +304,6 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
 
     with torch.no_grad():
         for iteration, (frames, meta_data) in enumerate(val_dataloader_normal):
-
-
             if last_seq != str(meta_data[0]['seq_id'][0].item()):
                 last_seq = str(meta_data[0]['seq_id'][0].item())
                 print('Now for seq id: ', last_seq)
@@ -370,25 +368,57 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
             # if iteration*config['exper']['per_gpu_batch_size'] % 20 != 0:
             #     continue
             if config['eval']['output']['save']:
-                predicted_meshes = preds[0][-1]['pred_vertices'] + meta_data[0]['3d_joints'][:, :1]
-                # for i in range(rgb.shape[0]):
-                #     seq_dir = op.join(config['exper']['output_dir'], str(meta_data['seq_id'][i].item()))
-                #     mkdir(seq_dir)
-                #     if config['eval']['output']['mesh']:
-                #         mesh_dir = op.join(seq_dir, 'mesh')
-                #         mkdir(mesh_dir)
-                #         with open(os.path.join(mesh_dir, '{}.obj'.format(meta_data['annot_id'][i].item())), 'w') as file_object:
-                #             for ver in predicted_meshes[i].detach().cpu().numpy():
-                #                 print('v %f %f %f'%(ver[0], ver[1], ver[2]), file=file_object)
-                #             faces = mano_layer.faces
-                #             for face in faces:
-                #                 print('f %d %d %d'%(face[0]+1, face[1]+1, face[2]+1), file=file_object)
+                for step in range(steps):
+                    predicted_meshes = preds[step][-1]['pred_vertices'] + meta_data[0]['3d_joints'][:, :1]
+                    if config['eval']['output']['mesh']:
+                        for i in range(batch_size):
+                            seq_dir = op.join(config['exper']['output_dir'], str(meta_data[step]['seq_id'][i].item()))
+                            mkdir(seq_dir)
+                            if config['eval']['output']['mesh']:
+                                mesh_dir = op.join(seq_dir, 'mesh')
+                                mkdir(mesh_dir)
+                                with open(os.path.join(mesh_dir, 'annot_{}_step_{}.obj'.format(meta_data[step]['annot_id'][i].item(), step)), 'w') as file_object:
+                                    for ver in predicted_meshes[i].detach().cpu().numpy():
+                                        print('v %f %f %f'%(ver[0], ver[1], ver[2]), file=file_object)
+                                    faces = mano_layer.faces
+                                    for face in faces:
+                                        print('f %d %d %d'%(face[0]+1, face[1]+1, face[2]+1), file=file_object)
+                    if config['eval']['output']['rendered']:
+                        key = config['eval']['output']['vis_rendered']
+                        if key == 'rgb':
+                            img_bg = frames[step][key+'_ori']
+                            _, h, w, _ = img_bg.shape
+                            hw = [h, w]
+                        else:
+                            img_bg = frames[step][key + '_ori'][-1]
+                            _, h, w, _ = img_bg.shape
+                            hw = [h, w]
+                        # print(meta_data[0]['K_'+key].device)
+                        # print(img_bg.device)
+                        # print(predicted_meshes.device)
+                        img_render = render.visualize(
+                            K=meta_data[step]['K_'+key].detach(),
+                            R=meta_data[step]['R_'+key].detach(),
+                            t=meta_data[step]['t_'+key].detach(),
+                            hw=hw,
+                            img_bg=img_bg.cpu(),
+                            vertices=predicted_meshes.detach(),
+                        )
+                        for i in range(img_render.shape[0]):
+                            img_dir = op.join(config['exper']['output_dir'], str(meta_data[step]['seq_id'][i].item()), 'rendered')
+                            mkdir(img_dir)
+                            imageio.imwrite(op.join(img_dir, 'annot_{}_step_{}.jpg'.format(meta_data[0]['annot_id'][i].item(), step)),
+                                            (img_render[i].detach().cpu().numpy() * 255).astype(np.uint8))
 
             # if config['eval']['output']['attention_map'] or True:
             #     id_tmp = 0
             #     annot_dir = op.join(config['exper']['output_dir'], str(meta_data[0]['seq_id'][id_tmp].item()), 'attention', str(meta_data[0]['annot_id'][id_tmp].item()))
             #     mkdir(annot_dir)
             #     encoder_ids = 2
+            #
+            #     print('attention for seq {} annot id {}'.format(meta_data[0]['seq_id'][id_tmp].item(),
+            #                                                     meta_data[0]['annot_id'][id_tmp].item()))
+            #
             #     layer_ids = ['S', 'M', 'L'].index(config['model']['tfm']['scale']) + 1
             #     for step in range(steps):
             #         fig_encoder, axes_encoder = plt.subplots(nrows=encoder_ids, ncols=(layer_ids), figsize=((layer_ids)*2, encoder_ids*2))
@@ -411,7 +441,7 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
             #                                                                           cmap="inferno")
             #                         axes_pe[encoder_id, p_l*p_l_inner + p_l_i].title.set_text(
             #                             f"Pe {encoder_id} L_p {p_l} L_i {p_l_i}")
-            #                         axes_pe[encoder_id, p_l*p_l_inner + p_l_i].axis('off')
+            #                         # axes_pe[encoder_id, p_l*p_l_inner + p_l_i].axis('off')
             #             fig_pe.savefig(op.join(annot_dir, f'attention_all_peceiver_step_{step}.png'))
             #             fig_pe.clear()
             #         for encoder_id in range(encoder_ids):
@@ -428,20 +458,18 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
             #                 attention_all_normal = (attention_all - min_j_all) / (max_j_all - min_j_all)
             #                 axes_encoder[encoder_id, layer_id].imshow(attention_all_normal,  cmap="inferno")
             #                 axes_encoder[encoder_id, layer_id].title.set_text(f"En {encoder_id} L {layer_id}")
-            #                 axes_encoder[encoder_id, layer_id].axis('off')
+            #                 # axes_encoder[encoder_id, layer_id].axis('off')
             #
             #                 # decoder
             #                 for i, att_type in enumerate(['self', 'cross']):
             #                     att_map = atts[2 * step + 1][encoder_id][layer_id][i][id_tmp]
-            #
             #                     attention_all = att_map.detach().cpu().numpy()
             #                     max_j_all = np.max(attention_all, axis=1, keepdims=True)
             #                     min_j_all = np.min(attention_all, axis=1, keepdims=True)
             #                     attention_all_normal = (attention_all - min_j_all) / (max_j_all - min_j_all)
             #                     axes_decoder[encoder_id, layer_id*2+i].imshow(attention_all_normal,  cmap="inferno")
             #                     axes_decoder[encoder_id, layer_id*2+i].title.set_text(f"De {encoder_id} L {layer_id} {att_type}")
-            #                     axes_decoder[encoder_id, layer_id*2+i].axis('off')
-            #
+            #                     # axes_decoder[encoder_id, layer_id*2+i].axis('off')
             #
             #         fig_encoder.savefig(op.join(annot_dir, f'attention_all_encoder_step_{step}.png'))
             #         fig_encoder.clear()
@@ -456,6 +484,79 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
             #         axes_input[1].axis('off')
             #         fig_input.savefig(op.join(annot_dir, f'data_step_{step}.png'))
             #         fig_input.clear()
+            #
+            #     att_map = atts[0][0][0][id_tmp]
+            #     att_wiev= att_map.detach().cpu().numpy()
+            #     e2im = att_wiev[:16, 16:]
+            #     fig_e2im, axes_e2im = plt.subplots(nrows=4, ncols=8, figsize=(16, 8))
+            #     for row in range(4):
+            #         for col in range(4):
+            #             att_tmp = e2im[row*4+col].copy()
+            #             max_ = np.max(att_tmp, axis=0, keepdims=True)
+            #             min_ = np.min(att_tmp, axis=0, keepdims=True)
+            #             att_normal = (att_tmp - min_) / (max_ - min_)
+            #
+            #             axes_e2im[row, col*2].imshow(frames[0]['ev_frames'][-1][id_tmp].detach().cpu().numpy())
+            #             ev_id = np.zeros(16,)
+            #             ev_id[row*4+col] = 1
+            #             ev_id_ = cv2.resize(ev_id.reshape(4, 4), (128, 128), interpolation=cv2.INTER_LINEAR)
+            #             axes_e2im[row, col*2].imshow(ev_id_, cmap="inferno", alpha=0.6)
+            #             axes_e2im[row, col*2].title.set_text(f"Ev R:{row} C:{col}")
+            #             axes_e2im[row, col*2].axis('off')
+            #
+            #             axes_e2im[row, col * 2 + 1].imshow(frames[0]['rgb_crop_un_normal'][id_tmp].detach().cpu().numpy())
+            #             att_e2im_tmp = cv2.resize(att_normal.reshape(6, 6), (192, 192), interpolation=cv2.INTER_LINEAR)
+            #             axes_e2im[row, col * 2 + 1].imshow(att_e2im_tmp, cmap="inferno", alpha=0.6)
+            #             axes_e2im[row, col * 2 + 1].title.set_text(f"Im R:{row} C:{col}")
+            #             axes_e2im[row, col * 2 + 1].axis('off')
+            #
+            #     fig_e2im.savefig(op.join(annot_dir, f'attention_e2im_wiev_encoder_step_0.png'))
+            #     fig_e2im.clear()
+            #
+            #     im2e = att_wiev[16:, :16]
+            #     fig_im2e, axes_im2e = plt.subplots(nrows=6, ncols=6, figsize=(12, 12))
+            #     for row in range(6):
+            #         for col in range(6):
+            #             att_tmp = im2e[row * 6 + col].copy()
+            #             max_ = np.max(att_tmp, axis=0, keepdims=True)
+            #             min_ = np.min(att_tmp, axis=0, keepdims=True)
+            #             att_normal = (att_tmp - min_) / (max_ - min_)
+            #
+            #             axes_im2e[row, col].imshow(frames[0]['ev_frames'][-1][id_tmp].detach().cpu().numpy())
+            #             att_im2e_tmp = cv2.resize(att_normal.reshape(4, 4), (128, 128),
+            #                                       interpolation=cv2.INTER_LINEAR)
+            #             axes_im2e[row, col].imshow(att_im2e_tmp, cmap="inferno", alpha=0.6)
+            #             axes_im2e[row, col].title.set_text(f"Ev R:{row} C:{col}")
+            #             axes_im2e[row, col].axis('off')
+            #
+            #     fig_im2e.savefig(op.join(annot_dir, f'attention_im2e_wiev_encoder_step_0.png'))
+            #     fig_im2e.clear()
+            #
+            #     att_map = atts[1][0][0][1][id_tmp][:21, :].detach().cpu().numpy()
+            #     max_j = np.max(att_map, axis=1, keepdims=True)
+            #     min_j = np.min(att_map, axis=1, keepdims=True)
+            #     att_map_joints = (att_map - min_j) / (max_j - min_j)
+            #     att_map_joints = att_map_joints[indices_change(1, 2)]
+            #     fig_j2data, axes_j2data = plt.subplots(nrows=3, ncols=7*2, figsize=(12*2, 6))
+            #     for i in range(3):
+            #         for j in range(7):
+            #             joint_id = 7 * i + j
+            #             col = j * 2
+            #             axes_j2data[i, col].imshow(frames[0]['ev_frames'][-1][id_tmp].detach().cpu().numpy())
+            #             att_map_ = cv2.resize(att_map_joints[joint_id, :16].reshape(4, 4),
+            #                                   (128, 128), interpolation=cv2.INTER_LINEAR)
+            #             axes_j2data[i, col].imshow(att_map_, cmap="inferno", alpha=0.6)
+            #             axes_j2data[i, col].title.set_text(f"Event {cfg.J_NAME[joint_id]}")
+            #             axes_j2data[i, col].axis('off')
+            #             col += 1
+            #             axes_j2data[i, col].imshow(frames[0]['rgb_crop_un_normal'][id_tmp].detach().cpu().numpy())
+            #             att_map_ = cv2.resize(att_map_joints[joint_id, 16:].reshape(6, 6), (192, 192), interpolation=cv2.INTER_LINEAR)
+            #             axes_j2data[i, col].imshow(att_map_, cmap="inferno", alpha=0.6)
+            #             axes_j2data[i, col].title.set_text(f"RGB {cfg.J_NAME[joint_id]}")
+            #             axes_j2data[i, col].axis('off')
+            #     fig_j2data.savefig(op.join(annot_dir, f'attention_j2data_decoder_step_0.png'))
+            #     fig_j2data.clear()
+
             #                     # fig_, axes_ = plt.subplots(nrows=1, ncols=1, figsize=(6, 6))
             #                     # axes_.title.set_text('Attention Map All')
             #                     # axes_.imshow(attention_all_normal, cmap="inferno")
@@ -610,7 +711,7 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
             frames = to_device(frames, device)
             meta_data = to_device(meta_data, device)
 
-            preds, atts = EvRGBStereo_model(frames, return_att=True, decode_all=False)
+            preds, atts = EvRGBStereo_model(frames, return_att=True, decode_all=True)
             batch_time.update(time.time() - end)
             end = time.time()
             steps = len(preds)
@@ -630,19 +731,71 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
                 # print('mpjpe shape', mpjpe_eachjoint_eachitem.shape)
                 # print('seq type shape', meta_data['seq_type'][fast_index])
                 update_errors_list(errors_list[0][step], mpjpe_eachjoint_eachitem[joints_2d_valid], meta_data[step]['seq_type'][joints_2d_valid])
+            if config['eval']['output']['save']:
+                for step in range(steps):
+                    segments = len(preds[step])
+                    for seg in range(segments):
+                        if step >=1:
+                            wrist_3d_inter = ((seg+1)*meta_data[step]['3d_joints'][:, :1]+(segments-1-seg)*meta_data[step-1]['3d_joints'][:, :1])/segments
+                        else:
+                            wrist_3d_inter = meta_data[step]['3d_joints'][:, :1]
+                        predicted_meshes = preds[step][seg]['pred_vertices'] + wrist_3d_inter
+                        if config['eval']['output']['mesh']:
+                            for i in range(batch_size):
+                                seq_dir = op.join(config['exper']['output_dir'], str(meta_data[step]['seq_id'][i].item()))
+                                mkdir(seq_dir)
+                                if config['eval']['output']['mesh']:
+                                    mesh_dir = op.join(seq_dir, 'mesh')
+                                    mkdir(mesh_dir)
+                                    with open(os.path.join(mesh_dir, 'annot_{}_step_{}_seg_{}.obj'.format(meta_data[step]['annot_id'][i].item(), step, seg)), 'w') as file_object:
+                                        for ver in predicted_meshes[i].detach().cpu().numpy():
+                                            print('v %f %f %f'%(ver[0], ver[1], ver[2]), file=file_object)
+                                        faces = mano_layer.faces
+                                        for face in faces:
+                                            print('f %d %d %d'%(face[0]+1, face[1]+1, face[2]+1), file=file_object)
+                        if config['eval']['output']['rendered']:
+                            key = config['eval']['output']['vis_rendered']
+                            if key == 'rgb':
+                                img_bg = frames[step][key+'_ori']
+                                _, h, w, _ = img_bg.shape
+                                hw = [h, w]
+                            else:
+                                img_bg = frames[step][key + '_ori'][seg]
+                                _, h, w, _ = img_bg.shape
+                                hw = [h, w]
+                            # print(meta_data[0]['K_'+key].device)
+                            # print(img_bg.device)
+                            # print(predicted_meshes.device)
+                            img_render = render.visualize(
+                                K=meta_data[step]['K_'+key].detach(),
+                                R=meta_data[step]['R_'+key].detach(),
+                                t=meta_data[step]['t_'+key].detach(),
+                                hw=hw,
+                                img_bg=img_bg.cpu(),
+                                vertices=predicted_meshes.detach(),
+                            )
+                            for i in range(img_render.shape[0]):
+                                img_dir = op.join(config['exper']['output_dir'], str(meta_data[step]['seq_id'][i].item()), 'rendered')
+                                mkdir(img_dir)
+                                imageio.imwrite(op.join(img_dir, 'annot_{}_step_{}_seg_{}.jpg'.format(meta_data[0]['annot_id'][i].item(), step, seg)),
+                                                (img_render[i].detach().cpu().numpy() * 255).astype(np.uint8))
 
-    for step in range(steps):
+    for step in range(config['exper']['preprocess']['steps']):
         file.write('Step: {}'.format(step) + '\n')
         for i, metric in enumerate(metrics):
             print_items(errors_list[i][step], labels_list, metric, file)
             file.write('\n')
         file.write('\n\n')
 
-    for step in range(steps):
+    for step in range(config['exper']['preprocess']['steps']):
         for i, key in enumerate(labels_list):
             if len(errors_list[0][step][i]) != 0:
                 errors_seq = torch.stack(errors_list[0][step][i])
                 print_sequence_error(errors_seq, metrics[0], labels_list[i]+'_step'+str(step), os.path.join(config['exper']['output_dir'], 'seq_errors'))
+                if config['eval']['output']['errors']:
+                    error_dir = op.join(config['exper']['output_dir'], 'errors', labels_list[i]+'_step'+str(step))
+                    mkdir(error_dir)
+                    torch.save(errors_seq, os.path.join(error_dir, 'kps_errors.pt'))
 
     # if config['eval']['output']['save']:
     #     if config['eval']['output']['errors']:

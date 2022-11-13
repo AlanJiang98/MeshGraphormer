@@ -64,14 +64,14 @@ exper:
       rot: 0.2
     rgb_photometry:
       colorjitter:
-        p: 0.2
+        p: 0.
         brightness:
           thre: [0.6, 5.]
       gauss:
         var: [0.1, 0.2]
-        p: 0.8
+        p: 0.
       gaussianblur:
-        p: 0.2
+        p: 0.
         kernel_size: 19
         sigma: [4, 8]
       salt_pepper:
@@ -83,15 +83,15 @@ exper:
         brightness:
           thre: [0.6, 5.]
       gauss:
-        var: [0.05, 0.2]
-        p: 0.8
+        var: [0.005, 0.005]
+        p: 0.
       gaussianblur:
-        p: 0.1
+        p: 0.
         kernel_size: 15
         sigma: [0.5, 3.]
       salt_pepper:
-        p: 0.15
-        rate: 0.1
+        p: 0.
+        rate: 0.03
   bbox:
     rate: 1.5
     rgb:
@@ -114,7 +114,7 @@ eval:
   augment:
     rot: 0
     scale: 1.0
-  fast_fps: 120
+  fast_fps: 15
   fast_window: 5000
   output:
     save: False
