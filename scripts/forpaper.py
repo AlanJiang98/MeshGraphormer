@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import torch
 import argparse
 import math
-import imageio
+import imageio.v2 as imageio
 from src.utils.miscellaneous import mkdir, set_seed
 import pandas as pd
 from pyntcloud import PyntCloud
@@ -26,10 +26,217 @@ from src.datasets.Interhand import Interhand
 #                (0.7, 0, 0.7)]
 import matplotlib.patches as mpatches
 
+# def get_config():
+#     parser = argparse.ArgumentParser('Training')
+#     # parser.add_argument('--config', type=str, default='/userhome/wangbingxuan/data/hfai_output/final/p-full-iter/train.yaml')
+#     parser.add_argument('--config', type=str, default='src/configs/test_for_paper.yaml')
+#     # parser.add_argument('--config_merge', type=str, default='src/configs/eval_evrealhands_75.yaml')
+#     parser.add_argument('--config_merge', type=str, default='')
+#     parser.add_argument('--output_dir', type=str,
+#                         default='./output')
+#     args = parser.parse_args()
+#     config = ConfigParser(args.config)
+#
+#     if args.config_merge != '':
+#         config.merge_configs(args.config_merge)
+#     config = config.config
+#     if args.output_dir != '':
+#         config['exper']['output_dir'] = args.output_dir
+#     dataset_config = ConfigParser(config['data']['dataset_yaml']).config
+#     config['data']['dataset_info'] = dataset_config
+#     config['exper']['debug'] = True
+#     config['exper']['run_eval_only'] = True
+#     config['eval']['fast'] = True
+#     return config
+#
+# config = get_config()
+#
+#
+# a = EvRealHands(config)
+#
+# output_dir = '/userhome/alanjjp/Project/MeshGraphormer/scripts/forpaper/gif/eci_225'
+# mkdir(output_dir)
+#
+# flash = 0
+# normal = 0
+# highlight = 0
+# fast = 0
+# print(len(a))
+# for i in range(0, len(a), 1):
+#     frames, info = a[i]
+#     # if info[0]['seq_id'] == 0 or info[0]['seq_id'] == 1:
+#     #     if normal > 600:
+#     #         continue
+#     #     normal += 1
+#     # if info[0]['seq_id'] == 2 or info[0]['seq_id'] == 3:
+#     #     if highlight > 200:
+#     #         continue
+#     #     highlight += 1
+#     # if info[0]['seq_id'] == 4 or info[0]['seq_id'] == 5:
+#     #     if flash > 200:
+#     #         continue
+#     #     flash += 1
+#     # if info[0]['seq_id'] == 6:
+#     #     if fast > 200:
+#     #         continue
+#     #     fast += 1
+#     for j in range(0, 2):
+#         for k in range(len(frames[j]['event_ori'])):
+#             eci = frames[j]['event_ori'][k].numpy()
+#             eci[..., 2] = 0
+#             # pair = np.concatenate([rgb, eci], axis=1)
+#             seq_id = str(info[0]['seq_id'].item())
+#             annot_id = str(info[0]['annot_id'].item())
+#             mkdir(os.path.join(output_dir, seq_id))
+#             # imageio.imwrite(os.path.join(output_dir, seq_id, 'image_{}.png'.format(annot_id)), (rgb * 255).astype(np.uint8))
+#             imageio.imwrite(os.path.join(output_dir, seq_id, 'eci_{}_step_{}_seg_{}.png'.format(annot_id, j, k)), (eci * 255).astype(np.uint8))
 
-colors_list = ['r', 'g', 'b', 'gold']
 
-labels = ['EventHands', 'FastMETRO-Event', 'EvRGBHand-Large', 'EvRGBHand-Fast']
+
+
+
+
+# box = 180
+#
+# bound = [[10, 10+box], [80, 80+180]]
+# rgb_bound = [[100, 500], [400, 800]]
+#
+#
+# annot_id_ranges = [[100, 103], [123, 126], [28, 31], [49, 52]]
+#
+# duration_base = 1.
+#
+# output_dir = '/userhome/alanjjp/Project/MeshGraphormer/scripts/forpaper/gif/concat'
+# mkdir(output_dir)
+#
+# all_datas = [[], [], [], []]
+#
+# # origin eci 225 fps
+# ori_eci_dir = '/userhome/alanjjp/Project/MeshGraphormer/scripts/forpaper/gif/eci_225/53'
+# for j, annot_id_range in enumerate(annot_id_ranges):
+#     origin_eci = []
+#     for annot_id in range(annot_id_range[0], annot_id_range[1]):
+#         origin_eci.append(imageio.imread(os.path.join(ori_eci_dir, 'eci_{}_step_{}_seg_{}.png'.format(annot_id, 0, 0))))
+#         for seg in range(0, 14, 1):
+#             origin_eci.append(
+#                 imageio.imread(os.path.join(ori_eci_dir, 'eci_{}_step_{}_seg_{}.png'.format(annot_id, 1, seg))))
+#     for i in range(len(origin_eci)):
+#         origin_eci[i] = origin_eci[i][bound[0][0]: bound[0][1], bound[1][0]:bound[1][1]]
+#     all_datas[j].append(origin_eci)
+#     # origin_eci.append(origin_eci[-1].copy())
+#     # for i, eci in enumerate(origin_eci):
+#     #     imageio.imwrite(os.path.join(output_dir, 'origin_eci_{}-{}.png'.format(annot_id_range[0], i)), eci)
+#     # print(len(origin_eci))
+#     # imageio.mimwrite(os.path.join(output_dir, 'ori_eci_{}_{}.gif'.format(annot_id_range[0], annot_id_range[1])),
+#     #                  origin_eci,
+#     #                  'GIF-PIL',
+#     #                  duration=duration_base/15,
+#     #                  fps=30,
+#     #                  )
+#
+# render_dir_root = '/userhome/alanjjp/Project/MeshGraphormer/output/final/final'
+#
+# rates = [1,2,3,4,5,6]
+#
+# for rate in rates:
+#     render_dir = os.path.join(
+#         render_dir_root,
+#         str(rate*15)+'fps',
+#         '53/rendered'
+#     )
+#     for j, annot_id_range in enumerate(annot_id_ranges):
+#         origin_eci = []
+#         for annot_id in range(annot_id_range[0], annot_id_range[1]):
+#             origin_eci.append(imageio.imread(os.path.join(render_dir, 'annot_{}_step_{}_seg_{}.jpg'.format(annot_id, 0, 0))))
+#             for seg in range(0, rate-1, 1):
+#                 origin_eci.append(
+#                     imageio.imread(os.path.join(render_dir, 'annot_{}_step_{}_seg_{}.jpg'.format(annot_id, 1, seg))))
+#
+#         for i in range(len(origin_eci)):
+#             origin_eci[i] = origin_eci[i][bound[0][0]: bound[0][1], bound[1][0]:bound[1][1]]
+#         all_datas[j].append(origin_eci)
+#         # origin_eci.append(origin_eci[-1].copy())
+#         # for i, eci in enumerate(origin_eci):
+#         #     imageio.imwrite(os.path.join(output_dir, 'rate_{}_eci_{}-{}.png'.format(rate, annot_id_range[0],i)), eci)
+#
+#         # print(len(origin_eci))
+#         # imageio.mimwrite(os.path.join(output_dir, 'rate_{}_{}_{}.gif'.format(rate, annot_id_range[0], annot_id_range[1])),
+#         #                  origin_eci,
+#         #                  'GIF-PIL',
+#         #                  duration=duration_base/rate,
+#         #                  fps=30,
+#         #                  )
+#
+#
+#
+# rgb_dir = '/userhome/alanjjp/data/EvRealHands/53/images/21320028'
+# for j, annot_id_range in enumerate(annot_id_ranges):
+#     origin_rgb = []
+#     for annot_id in range(annot_id_range[0], annot_id_range[1]):
+#         origin_rgb.append(imageio.imread(os.path.join(rgb_dir, 'image' + str(annot_id).rjust(4, '0') + '.jpg')))
+#     for i in range(len(origin_rgb)):
+#         origin_rgb[i] = origin_rgb[i][rgb_bound[0][0]: rgb_bound[0][1], rgb_bound[1][0]:rgb_bound[1][1]]
+#         origin_rgb[i] = cv2.resize(origin_rgb[i], (box, box), interpolation=cv2.INTER_AREA)
+#     all_datas[j].append(origin_rgb)
+#     # origin_rgb.append(origin_rgb[-1].copy())
+#     # for i, rgb in enumerate(origin_rgb):
+#     #     imageio.imwrite(os.path.join(output_dir, 'rgb_{}-{}.png'.format(annot_id_range[0], i)), rgb)
+#     # print(len(origin_rgb))
+#     # imageio.mimwrite(os.path.join(output_dir, 'rgb_{}_{}.gif'.format(annot_id_range[0], annot_id_range[1])),
+#     #                  origin_rgb,
+#     #                  'GIF-PIL',
+#     #                  duration=duration_base/1,
+#     #                  fps=30,
+#     #                  )
+#
+# rgb_dir = '/userhome/alanjjp/Project/MeshGraphormer/output/final/final/f-rgb/53/rendered'
+# for j, annot_id_range in enumerate(annot_id_ranges):
+#     origin_rgb = []
+#     for annot_id in range(annot_id_range[0], annot_id_range[1]):
+#         origin_rgb.append(imageio.imread(os.path.join(rgb_dir, 'annot_{}_step_0.jpg'.format(annot_id))))
+#     for i in range(len(origin_rgb)):
+#         origin_rgb[i] = origin_rgb[i][rgb_bound[0][0]: rgb_bound[0][1], rgb_bound[1][0]:rgb_bound[1][1]]
+#         origin_rgb[i] = cv2.resize(origin_rgb[i], (box, box), interpolation=cv2.INTER_AREA)
+#     all_datas[j].append(origin_rgb)
+#
+#
+#
+# data_concat = [[], [], [], []]
+#
+# for i in range(len(all_datas)):
+#     base_len = len(all_datas[i][0])
+#     for j in range(1, len(all_datas[i])):
+#         tmp_len = len(all_datas[i][j])
+#         inter_rate = base_len / float(tmp_len)
+#         index = np.arange(tmp_len+1) * inter_rate
+#         tmp_data = []
+#         for k in range(len(all_datas[i][j])):
+#             for _ in range(int(index[k+1]) - int(index[k])):
+#                 tmp_data.append(all_datas[i][j][k].copy())
+#         all_datas[i][j] = tmp_data
+#     for k in range(base_len):
+#         tmp_imgs = []
+#         for l in range(len(all_datas[i])):
+#             tmp_imgs.append(all_datas[i][l][k].copy())
+#         data_concat[i].append(np.concatenate(tmp_imgs, axis=1))
+#
+# for i in range(len(all_datas)):
+#     imageio.mimwrite(os.path.join(output_dir, 'annot_{}.gif'.format(annot_id_ranges[i][0])),
+#                      data_concat[i],
+#                      'GIF-PIL',
+#                      duration=duration_base/15,
+#                      fps=30,
+#                      )
+#
+# for i in range(len(data_concat)):
+#     for j in range(len(data_concat[i])):
+#         imageio.imwrite(os.path.join(output_dir, 'res_{}-{}.png'.format(annot_id_ranges[i][0], j)), data_concat[i][j])
+
+# todo for performance vs iterations
+colors_list = ['gray', 'r', (0, 0, 1), (0, 0.7, 0), (0.65, 0.65, 1), (0.5, 1, 0.5)]
+
+labels = ['EventHands', 'FastMETRO-Event', 'EvRGBHand-Large (S=2)', 'EvRGBHand-Fast (S=2)',
+          'EvRGBHand-Large (S=4)', 'EvRGBHand-Fast (S=4)',]
 # markers = ['o', '^', '^', 's', 's', '*']
 # linestyles = ['--', ':', '--', ':', '--', ':', '-']
 markers = ['o', '^', ]
@@ -55,6 +262,37 @@ MPJPES_stronglight_large = [
 MPJPES_flash_large = [
     27.21, 30.59, 33.89, 37.33, 40.22, 43.29, 46.71, 49.81, 52.75,
 ]
+
+
+
+# Large EvRGBHand
+MPJPES_normal_large_5 = [
+    16.44, 18.33, 19.95, 21.34, 22.49, 23.40, 24.17, 24.91, 25.55,
+]
+
+MPJPES_stronglight_large_5 = [
+    26.98, 27.67, 28.34, 28.94, 29.53, 30.06, 30.42, 30.87, 31.38,
+]
+
+MPJPES_flash_large_5 = [
+    26.84, 29.42, 31.79, 33.72, 35.26, 36.43, 37.55, 38.77, 40.02,
+]
+
+
+# Large EvRGBHand
+MPJPES_normal_large_7 = [
+    16.60, 18.53, 20.04, 21.39, 22.54, 23.52, 24.36, 25.21, 25.94,
+]
+
+MPJPES_stronglight_large_7 = [
+    30.94, 31.39, 32.06, 32.55, 33.12, 33.54, 33.95, 34.15, 34.50,
+]
+
+MPJPES_flash_large_7 = [
+    28.52, 30.45, 32.23, 34.25, 36.23, 37.67, 39.08, 40.18, 41.10,
+]
+
+
 
 MPVPES_normal_large = [
     6.17, 7.35, 8.42, 9.43, 10.37, 11.29, 12.18, 13.04, 13.87,
@@ -86,6 +324,34 @@ MPJPES_flash_fast = [
     27.86, 30.32, 32.91, 35.43, 37.86, 39.91, 42.01, 44.08, 46.06,
 ]
 
+
+MPJPES_normal_fast_5 = [
+    16.39, 18.26, 19.85, 21.22, 22.34, 23.35, 24.24, 25.04, 25.69,
+]
+
+MPJPES_stronglight_fast_5 = [
+    30.98, 31.27, 31.64, 31.90, 32.01, 32.24, 32.37, 32.67, 32.91,
+]
+
+MPJPES_flash_fast_5 = [
+    27.23, 29.33, 31.36, 33.32, 34.79, 35.75, 36.90, 38.04, 38.98,
+]
+
+
+MPJPES_normal_fast_7 = [
+    17.24, 19.02, 20.38, 21.50, 22.38, 23.13, 23.74, 24.26, 24.63,
+]
+
+MPJPES_stronglight_fast_7 = [
+    31.00, 31.20, 31.46, 31.79, 32.00, 32.40, 32.53, 32.71, 32.91,
+]
+
+MPJPES_flash_fast_7 = [
+    29.19, 31.04, 32.83, 34.56, 35.78, 36.85, 37.76, 38.67, 39.30,
+]
+
+
+
 MPVPES_normal_fast = [
     6.22, 7.25, 8.15, 8.90, 9.57, 10.20, 10.79, 11.35, 11.88,
 ]
@@ -108,6 +374,28 @@ fast_res = np.array(
     dtype=np.float32
 )
 
+
+large_res_5 = np.array(
+    [MPJPES_normal_large_5, MPJPES_stronglight_large_5, MPJPES_flash_large_5, ],
+    dtype=np.float32
+)
+
+fast_res_5 = np.array(
+    [MPJPES_normal_fast_5, MPJPES_stronglight_fast_5, MPJPES_flash_fast_5,],
+    dtype=np.float32
+)
+
+large_res_7 = np.array(
+    [MPJPES_normal_large_7, MPJPES_stronglight_large_7, MPJPES_flash_large_7, ],
+    dtype=np.float32
+)
+
+fast_res_7 = np.array(
+    [MPJPES_normal_fast_7, MPJPES_stronglight_fast_7, MPJPES_flash_fast_7,],
+    dtype=np.float32
+)
+
+
 FastMETRO_res = np.array([
     21.62, 29.06, 39.58, 8.67, 11.49, 16.51,
 ], dtype=np.float32)
@@ -121,6 +409,7 @@ EventHands_res = EventHands_res[:, None].repeat(9, axis=1)
 
 
 y_lim_large = [35, 40, 55]
+y_lim_small = [15, 25, 25]
 
 title_names = ['Normal scenes', 'Strong light scenes', 'Flash scenes']
 pdf_names = ['normal', 'stronglight', 'flash']
@@ -132,16 +421,16 @@ for scene in range(3):
     fig.set_size_inches(8, 6.5)
     ax.set_title(title_names[scene], fontsize=font_size+3, pad=30)
     ax.set_xticks(np.arange(1, 10, 1))
-    ax.set_yticks(np.arange(5, y_lim_large[scene], 10))
+    ax.set_yticks(np.arange(y_lim_small[scene], y_lim_large[scene], 5))
     ax.set_xlim((0.5, 9.5))
-    ax.set_ylim((5, y_lim_large[scene]))
+    ax.set_ylim((y_lim_small[scene], y_lim_large[scene]))
     ax.set_xlabel('Step', fontsize=font_size)
     ax.set_ylabel('Error (mm)', fontsize=font_size)
 
 
     for item in ax.get_xticklabels() + ax.get_yticklabels():
         item.set_fontsize(font_size-2)
-    for error_type in range(2):
+    for error_type in range(1):
         index = np.arange(1, 10, 1)
         line, = ax.plot(index, EventHands_res[scene+error_type*3], color=colors_list[0], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
         lines.append(line)
@@ -151,22 +440,30 @@ for scene in range(3):
         lines.append(line)
         line, = ax.plot(index, fast_res[scene+error_type*3], color=colors_list[3], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
         lines.append(line)
+        line, = ax.plot(index, large_res_5[scene+error_type*3], color=colors_list[4], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
+        lines.append(line)
+        line, = ax.plot(index, fast_res_5[scene+error_type*3], color=colors_list[5], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
+        lines.append(line)
+        # line, = ax.plot(index, large_res_7[scene+error_type*3], color=colors_list[6], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
+        # lines.append(line)
+        # line, = ax.plot(index, fast_res_7[scene+error_type*3], color=colors_list[7], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
+        # lines.append(line)
 
-    patches = []
-    for i, color in enumerate(colors_list):
-        patches.append(mpatches.Patch(color=color, label=labels[i]))
-    lines_new = []
-    line, = ax.plot(index, fast_res[0]+100, label='MPJPE', color='gray', linewidth=line_width, linestyle=linestyles[0], marker=markers[0], markersize=marker_size)
-    lines_new.append(line)
-    patches.append(line)
-    line, = ax.plot(index, fast_res[0]+100, label='MPVPE', color='gray', linewidth=line_width, linestyle=linestyles[1], marker=markers[1], markersize=marker_size)
-    lines_new.append(line)
-    patches.append(line)
+    # patches = []
+    # for i, color in enumerate(colors_list):
+    #     patches.append(mpatches.Patch(color=color, label=labels[i]))
+    # lines_new = []
+    # line, = ax.plot(index, fast_res[0]+100, label='MPJPE', color='gray', linewidth=line_width, linestyle=linestyles[0], marker=markers[0], markersize=marker_size)
+    # lines_new.append(line)
+    # patches.append(line)
+    # line, = ax.plot(index, fast_res[0]+100, label='MPVPE', color='gray', linewidth=line_width, linestyle=linestyles[1], marker=markers[1], markersize=marker_size)
+    # lines_new.append(line)
+    # patches.append(line)
 
-    # ax.legend(patches, loc='upper right', title_fontsize=font_size - 2, prop={'size': font_size - 2})
-    plt.legend(handles=patches, loc='upper left', title_fontsize=font_size - 3, prop={'size': font_size - 3})
+    ax.legend(lines, labels, loc='upper left', title_fontsize=font_size - 2, prop={'size': font_size - 2})
+    # plt.legend(handles=patches, loc='upper left', title_fontsize=font_size - 3, prop={'size': font_size - 3})
     plt.tight_layout()
-    # plt.show()
+    #plt.show()
     mkdir(output_dir)
     fig.savefig(os.path.join(output_dir, '{}.pdf'.format(pdf_names[scene])))
 

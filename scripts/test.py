@@ -230,7 +230,7 @@ def get_config():
 
 config = get_config()
 
-a = EvRealHands(config)
+# a = EvRealHands(config)
 
 
 
@@ -244,7 +244,7 @@ a = EvRealHands(config)
 
 # item = a[200]
 # item = a[140]
-# a = Interhand(config)
+a = Interhand(config)
 # item = a[1]
 # item = a[100]
 # a[500]

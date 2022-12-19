@@ -10,6 +10,8 @@ exper:
     ev_repre: 'LNES' #'Lnes', 'eci'
     event_range: 'num' # 'time'
     num_window: 7000
+    steps: 2
+    segments: 5
 
 eval:
   fast_fps: 75 #120

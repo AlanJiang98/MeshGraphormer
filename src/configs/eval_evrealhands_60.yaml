@@ -11,10 +11,10 @@ exper:
     event_range: 'num' # 'time'
     num_window: 7000
     steps: 2
-    segments: 2
+    segments: 4
 
 eval:
-  fast_fps: 30 #120
+  fast_fps: 60 #120
   fast_window: 5000
   multiscale: False
   output:

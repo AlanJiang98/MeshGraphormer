@@ -31,32 +31,20 @@ import copy
 import imageio
 import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
-from src.modeling.bert import BertConfig, Graphormer
-from src.modeling.bert import Graphormer_Hand_Network as Graphormer_Network
 from src.modeling.EvRGBStereo import EvRGBStereo
 from src.modeling.Loss import Loss
 from src.modeling._mano import MANO, Mesh
-from src.modeling.hrnet.hrnet_cls_net_gridfeat import get_cls_net_gridfeat
-from src.modeling.hrnet.config import config as hrnet_config
-from src.modeling.hrnet.config import update_config as hrnet_update_config
-import src.modeling.data.config as cfg
 from src.datasets.build import make_hand_data_loader
 
 from src.utils.joint_indices import indices_change
-from src.utils.logger import setup_logger
 from src.utils.comm import synchronize, is_main_process, get_rank, get_world_size, all_gather, to_device
 from src.utils.miscellaneous import mkdir, set_seed
 from src.utils.metric_logger import AverageMeter
 from src.utils.renderer import Render
-from src.utils.metric_pampjpe import reconstruction_error
-from src.utils.geometric_layers import orthographic_projection
 from src.configs.config_parser import ConfigParser
 from src.utils.metric_pampjpe import get_alignMesh, compute_similarity_transform_batch
 from fvcore.nn import FlopCountAnalysis
 
-
-# from azureml.core.run import Run
-# aml_run = Run.get_context()
 
 def save_checkpoint(model, config, epoch, iteration, num_trial=10):
     checkpoint_dir = op.join(config['exper']['output_dir'], 'checkpoint-{}-{}'.format(
@@ -76,16 +64,6 @@ def save_checkpoint(model, config, epoch, iteration, num_trial=10):
     else:
         print("Failed to save checkpoint after {} trails.".format(num_trial))
     return checkpoint_dir
-
-
-def adjust_learning_rate(optimizer, epoch, config):
-    """
-    Sets the learning rate to the initial LR decayed by x every y epochs
-    x = 0.1, y = args.num_train_epochs/2.0 = 100
-    """
-    lr = config['exper']['lr'] * (0.1 ** (epoch // (config['exper']['num_train_epochs'] / 2.0)))
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
 
 
 def run(config, train_dataloader, EvRGBStereo_model, Loss):
@@ -128,7 +106,6 @@ def run(config, train_dataloader, EvRGBStereo_model, Loss):
         EvRGBStereo_model.train()
         iteration += 1
         epoch = iteration // iters_per_epoch
-        # adjust_learning_rate(optimizer, epoch, config)
         data_time.update(time.time() - end)
 
         device = 'cuda'
@@ -229,6 +206,7 @@ def print_metrics(errors, metric='MPJPE', f=None):
     else:
         f.write('{} all is {}'.format(metric, mpjpe_all) + '\n')
 
+
 def print_sequence_error(mpjpe_eachjoint_eachitem, metric, seq_type, dir):
     x = np.arange(0, mpjpe_eachjoint_eachitem.shape[0])
     mpjpe_pre = torch.mean(mpjpe_eachjoint_eachitem, dim=1).detach().cpu().numpy() / 1000.
@@ -282,10 +260,6 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
     colors_list = ['r', 'g', 'b', 'gold', 'purple', 'cyan', 'm']
     steps = config['exper']['preprocess']['steps']
 
-    # mpjpe_errors_list = [[], [], [], [], [], [], []]
-    # mpvpe_errors_list = [[], [], [], [], [], [], []]
-    # pa_mpjpe_errors_list = [[], [], [], [], [], [], []]
-    # pa_mpvpe_errors_list = [[], [], [], [], [], [], []]
     errors_list = []
     for i in range(4):
         errors_list.append([])
@@ -331,8 +305,6 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
                     print('each CNN params: {} M'.format(cnn_params))
                     file.write('each CNN params: {} M\n'.format(cnn_params))
 
-            # print(meta_data[0]['seq_type'], preds[0][0]['scene_weight'])
-
             for step in range(steps):
 
                 bbox_valid = meta_data[step]['bbox_valid']
@@ -369,46 +341,53 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
             #     continue
             if config['eval']['output']['save']:
                 for step in range(steps):
-                    predicted_meshes = preds[step][-1]['pred_vertices'] + meta_data[0]['3d_joints'][:, :1]
-                    if config['eval']['output']['mesh']:
-                        for i in range(batch_size):
-                            seq_dir = op.join(config['exper']['output_dir'], str(meta_data[step]['seq_id'][i].item()))
-                            mkdir(seq_dir)
-                            if config['eval']['output']['mesh']:
-                                mesh_dir = op.join(seq_dir, 'mesh')
-                                mkdir(mesh_dir)
-                                with open(os.path.join(mesh_dir, 'annot_{}_step_{}.obj'.format(meta_data[step]['annot_id'][i].item(), step)), 'w') as file_object:
-                                    for ver in predicted_meshes[i].detach().cpu().numpy():
-                                        print('v %f %f %f'%(ver[0], ver[1], ver[2]), file=file_object)
-                                    faces = mano_layer.faces
-                                    for face in faces:
-                                        print('f %d %d %d'%(face[0]+1, face[1]+1, face[2]+1), file=file_object)
-                    if config['eval']['output']['rendered']:
-                        key = config['eval']['output']['vis_rendered']
-                        if key == 'rgb':
-                            img_bg = frames[step][key+'_ori']
-                            _, h, w, _ = img_bg.shape
-                            hw = [h, w]
+                    segments = len(preds[step])
+                    for seg in range(segments):
+                        if step >=1:
+                            wrist_3d_inter = ((seg + 1) * meta_data[step]['3d_joints'][:, :1] + (segments - 1 - seg) *
+                                              meta_data[step - 1]['3d_joints'][:, :1]) / segments
                         else:
-                            img_bg = frames[step][key + '_ori'][-1]
-                            _, h, w, _ = img_bg.shape
-                            hw = [h, w]
-                        # print(meta_data[0]['K_'+key].device)
-                        # print(img_bg.device)
-                        # print(predicted_meshes.device)
-                        img_render = render.visualize(
-                            K=meta_data[step]['K_'+key].detach(),
-                            R=meta_data[step]['R_'+key].detach(),
-                            t=meta_data[step]['t_'+key].detach(),
-                            hw=hw,
-                            img_bg=img_bg.cpu(),
-                            vertices=predicted_meshes.detach(),
-                        )
-                        for i in range(img_render.shape[0]):
-                            img_dir = op.join(config['exper']['output_dir'], str(meta_data[step]['seq_id'][i].item()), 'rendered')
-                            mkdir(img_dir)
-                            imageio.imwrite(op.join(img_dir, 'annot_{}_step_{}.jpg'.format(meta_data[0]['annot_id'][i].item(), step)),
-                                            (img_render[i].detach().cpu().numpy() * 255).astype(np.uint8))
+                            wrist_3d_inter = meta_data[step]['3d_joints'][:, :1]
+                        predicted_meshes = preds[step][seg]['pred_vertices'] + wrist_3d_inter
+                        if config['eval']['output']['mesh']:
+                            for i in range(batch_size):
+                                seq_dir = op.join(config['exper']['output_dir'], str(meta_data[step]['seq_id'][i].item()))
+                                mkdir(seq_dir)
+                                if config['eval']['output']['mesh']:
+                                    mesh_dir = op.join(seq_dir, 'mesh')
+                                    mkdir(mesh_dir)
+                                    with open(os.path.join(mesh_dir, 'annot_{}_step_{}.obj'.format(meta_data[step]['annot_id'][i].item(), step)), 'w') as file_object:
+                                        for ver in predicted_meshes[i].detach().cpu().numpy():
+                                            print('v %f %f %f'%(ver[0], ver[1], ver[2]), file=file_object)
+                                        faces = mano_layer.faces
+                                        for face in faces:
+                                            print('f %d %d %d'%(face[0]+1, face[1]+1, face[2]+1), file=file_object)
+                        if config['eval']['output']['rendered']:
+                            key = config['eval']['output']['vis_rendered']
+                            if key == 'rgb':
+                                img_bg = frames[step][key+'_ori']
+                                _, h, w, _ = img_bg.shape
+                                hw = [h, w]
+                            else:
+                                img_bg = frames[step][key + '_ori'][-1]
+                                _, h, w, _ = img_bg.shape
+                                hw = [h, w]
+                            # print(meta_data[0]['K_'+key].device)
+                            # print(img_bg.device)
+                            # print(predicted_meshes.device)
+                            img_render = render.visualize(
+                                K=meta_data[step]['K_'+key].detach(),
+                                R=meta_data[step]['R_'+key].detach(),
+                                t=meta_data[step]['t_'+key].detach(),
+                                hw=hw,
+                                img_bg=img_bg.cpu(),
+                                vertices=predicted_meshes.detach(),
+                            )
+                            for i in range(img_render.shape[0]):
+                                img_dir = op.join(config['exper']['output_dir'], str(meta_data[step]['seq_id'][i].item()), 'rendered')
+                                mkdir(img_dir)
+                                imageio.imwrite(op.join(img_dir, 'annot_{}_step_{}.jpg'.format(meta_data[0]['annot_id'][i].item(), step)),
+                                                (img_render[i].detach().cpu().numpy() * 255).astype(np.uint8))
 
             # if config['eval']['output']['attention_map'] or True:
             #     id_tmp = 0
@@ -557,46 +536,6 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
             #     fig_j2data.savefig(op.join(annot_dir, f'attention_j2data_decoder_step_0.png'))
             #     fig_j2data.clear()
 
-            #                     # fig_, axes_ = plt.subplots(nrows=1, ncols=1, figsize=(6, 6))
-            #                     # axes_.title.set_text('Attention Map All')
-            #                     # axes_.imshow(attention_all_normal, cmap="inferno")
-            #                     # fig_.savefig(op.join(annot_dir, 'attention_all_encoder{}_layer{}.png'.format(encoder_id, layer_id)))
-            #                     # fig_.clear()
-            #                     #
-            #                     # shapes = np.array([16, 36, 16], dtype=np.int32)
-            #                     # cnn_shape = shapes * np.array(config['model']['method']['ere_usage'])
-            #                     # att_map_all = np.zeros((21, cnn_shape.sum()), dtype=np.float32)
-            #                     # for i in range(config['model']['tfm']['num_attention_heads']):
-            #                     #     att_map_all += att_map[i][:21, -cnn_shape.sum():].detach().cpu().numpy()
-            #                     # max_j = np.max(att_map_all, axis=1, keepdims=True)
-            #                     # min_j = np.min(att_map_all, axis=1, keepdims=True)
-            #                     # att_map_joints = (att_map_all - min_j) / (max_j - min_j)
-            #                     # att_map_joints = att_map_joints[indices_change(1, 2)]
-            #                     # fig, axes = plt.subplots(nrows=3, ncols=7*len(cnn_shape), figsize=(12*len(cnn_shape), 6))
-            #                     # for i in range(3):
-            #                     #     for j in range(7):
-            #                     #         joint_id = 7 * i + j
-            #                     #         col = j * sum(config['model']['method']['ere_usage'])
-            #                     #         if config['model']['method']['ere_usage'][0]:
-            #                     #             axes[i, col].imshow(l_ev_frame[id_tmp].detach().cpu().numpy())
-            #                     #             att_map_ = cv2.resize(att_map_joints[joint_id, :cnn_shape[0]].reshape(4, 4),
-            #                     #                                   (l_ev_frame.shape[1:3]),
-            #                     #                                   interpolation=cv2.INTER_NEAREST)
-            #                     #             axes[i, col].imshow(att_map_, cmap="inferno", alpha=0.6)
-            #                     #             axes[i, col].title.set_text(f"Event {cfg.J_NAME[joint_id]}")
-            #                     #             axes[i, col].axis("off")
-            #                     #             col += 1
-            #                     #         if config['model']['method']['ere_usage'][1]:
-            #                     #             axes[i, col].imshow(rgb[id_tmp].detach().cpu().numpy())
-            #                     #             att_map_ = cv2.resize(att_map_joints[joint_id, cnn_shape[0]:sum(cnn_shape[:2])].reshape(6, 6), (rgb.shape[1:3]), interpolation=cv2.INTER_NEAREST)
-            #                     #             axes[i, col].imshow(att_map_, cmap="inferno", alpha=0.6)
-            #                     #             axes[i, col].title.set_text(f"RGB {cfg.J_NAME[joint_id]}")
-            #                     #             axes[i, col].axis("off")
-            #                     #             col += 1
-            #                     #
-            #                     # # fig.show()
-            #                     # fig.savefig(op.join(annot_dir, 'encoder{}_layer{}.png'.format(encoder_id, layer_id)))
-            #                     # fig.clear()
             #
             #     # if config['eval']['output']['attention_map']:
             #     #     id_tmp = 0

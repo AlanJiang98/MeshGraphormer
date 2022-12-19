@@ -3,7 +3,6 @@ nltk
 numpy
 chumpy
 requests
-
 dv
 opencv-python
 matplotlib
@@ -15,3 +14,5 @@ boto3
 scipy
 yacs
 roma
+pandas
+pyntcloud

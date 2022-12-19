@@ -55,13 +55,13 @@ exper:
     num_window: 7000
     num_var: 2000
     cam_view: 'event' # 'world', 'rgb', 'event
-    steps: 1
-    segments: 1
+    steps: 2
+    segments: 15
   augment:
     geometry:
-      scale: 0.1
-      trans: 0.05
-      rot: 0.2
+      scale: 0.
+      trans: 0.0
+      rot: 0.
     rgb_photometry:
       colorjitter:
         p: 0.
@@ -83,7 +83,7 @@ exper:
         brightness:
           thre: [0.6, 5.]
       gauss:
-        var: [0.005, 0.005]
+        var: [0.005, 0.007]
         p: 0.
       gaussianblur:
         p: 0.
@@ -91,7 +91,7 @@ exper:
         sigma: [0.5, 3.]
       salt_pepper:
         p: 0.
-        rate: 0.03
+        rate: 0.05
   bbox:
     rate: 1.5
     rgb:
@@ -114,7 +114,7 @@ eval:
   augment:
     rot: 0
     scale: 1.0
-  fast_fps: 15
+  fast_fps: 225
   fast_window: 5000
   output:
     save: False

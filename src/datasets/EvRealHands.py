@@ -85,7 +85,7 @@ class EvRealHands(Dataset):
         # annot['sample_ids'] = [str(id) for id in mano_ids_np[1:][indices]]
         # deal with static hand pose
         #todo
-        mano_ids = mano_ids[20:-5]
+        mano_ids = mano_ids[15:-11]
         annot['sample_ids'] = [str(id) for id in mano_ids]
         K_old = np.array(annot['camera_info']['event']['K_old'])
         K_new = np.array(annot['camera_info']['event']['K_new'])
@@ -129,9 +129,9 @@ class EvRealHands(Dataset):
         if self.config['exper']['debug']:
             if self.config['exper']['run_eval_only']:
                 # todo change!
-                seq_ids = ['20', '53'] #''1', '53', 52', '20', '21', '26', '27', '25']
+                seq_ids = ['20', '53',] #''1', '53', 52', '20', '21', '26', '27', '25']
             else:
-                seq_ids = ['41', '18']#['24', '18']
+                seq_ids = ['4', '20']#['24', '18']
             for seq_id in seq_ids:
                 data = self.get_events_annotations_per_sequence(osp.join(self.config['data']['dataset_info']['evrealhands']['data_dir'], seq_id),
                                                             not self.config['exper']['run_eval_only'], self.config['eval']['fast'])

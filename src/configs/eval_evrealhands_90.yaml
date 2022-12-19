@@ -10,6 +10,8 @@ exper:
     ev_repre: 'LNES' #'Lnes', 'eci'
     event_range: 'num' # 'time'
     num_window: 7000
+    steps: 2
+    segments: 6
 
 eval:
   fast_fps: 90 #120
@@ -17,7 +19,7 @@ eval:
   multiscale: False
   output:
     save: True
-    mesh: True
+    mesh: False
     attention_map: True
     errors: True
     rendered: True

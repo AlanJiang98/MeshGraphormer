@@ -115,12 +115,16 @@ class Interhand(Dataset):
                                     img_valid_id_list.append(img_id)
                         if len(img_valid_id_list) <= 30:
                             continue
-                        start = 24
-                        for i, img_valid_id in enumerate(img_valid_id_list[start:-5]):
+                        start = 18
+                        count = 0
+                        for i, img_valid_id in enumerate(img_valid_id_list[start:-8]):
                             time = (int(img_valid_id) - int(img_id_list[0])) / 90. * 1000000.
-                            if int(img_valid_id_list[start + i + 2]) - int(img_valid_id) == 6:
+                            if int(img_valid_id_list[start + i + 8]) - int(img_valid_id) == 24:
                                 item = (int(cap_id), ges_index, pair_id, img_valid_id, time)
                                 samples.append(item)
+                                count += 1
+                            print('len', len(img_valid_id_list[start:-5]))
+                            print('count', count)
 
                         if ges in bbox_inter_f_cap.keys():
                             continue

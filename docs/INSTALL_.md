@@ -20,10 +20,8 @@ conda activate evrgb
 # Install Pytorch
 conda install pytorch==1.11.0 torchvision==0.12.0 cudatoolkit=11.3 -c pytorch
 
-# Install OpenDR
+# Install Pytorch3D
 pip install matplotlib
-pip install git+https://gitlab.eecs.umich.edu/ngv-python-modules/opendr.git
-
 conda install -c fvcore -c iopath -c conda-forge fvcore iopath
 conda install pytorch3d -c pytorch3d
 
