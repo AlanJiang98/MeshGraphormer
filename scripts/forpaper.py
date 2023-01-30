@@ -96,12 +96,49 @@ import matplotlib.patches as mpatches
 
 
 
-# box = 180
-#
-# bound = [[10, 10+box], [80, 80+180]]
-# rgb_bound = [[100, 500], [400, 800]]
-#
-#
+
+
+box = 180
+
+bound = [[10, 10+box], [60, 100+box]]
+rgb_bound = [[100, 500], [400, 800]]
+
+#############################
+# new visualization
+seq_ids = [21, 21, 5, 5, 5, 5]
+annot_id_ranges = [[424, 432], [201, 209], [126, 134], [309, 317], [211, 219], [417, 425]]
+root_dir = "/userhome/alanjjp/Project/MeshGraphormer/output/final/final/p-full-iter-5-90fps-event_view_new"
+output_dir = '/userhome/alanjjp/Project/MeshGraphormer/scripts/forpaper/rebuttal/annimation'
+mkdir(output_dir)
+
+all_datas = []
+for j, annot_id_range in enumerate(annot_id_ranges):
+    render_dir = os.path.join(root_dir, str(seq_ids[j]), 'rendered')
+    origin_eci = []
+    for annot_id in range(annot_id_range[0], annot_id_range[1]):
+        origin_eci.append(imageio.imread(os.path.join(render_dir, 'annot_{}_step_{}_seg_{}.jpg'.format(annot_id, 0, 0))))
+        for seg in range(0, 5, 1):
+            origin_eci.append(
+                imageio.imread(os.path.join(render_dir, 'annot_{}_step_{}_seg_{}.jpg'.format(annot_id, 1, seg))))
+
+    for i in range(len(origin_eci)):
+        origin_eci[i] = origin_eci[i][bound[0][0]: bound[0][1], bound[1][0]:bound[1][1]]
+    all_datas.append(origin_eci)
+
+outputs = []
+
+for k in range(len(all_datas[0])):
+    tmp_imgs = []
+    for l in range(len(annot_id_ranges)):
+        tmp_imgs.append(all_datas[l][k].copy())
+    outputs.append(np.concatenate(tmp_imgs, axis=1))
+
+for i in range(len(outputs)):
+    imageio.imwrite(os.path.join(output_dir, 'rebutt-{}.png'.format(i)), outputs[i])
+
+##############################
+
+
 # annot_id_ranges = [[100, 103], [123, 126], [28, 31], [49, 52]]
 #
 # duration_base = 1.
@@ -166,9 +203,9 @@ import matplotlib.patches as mpatches
 #         #                  duration=duration_base/rate,
 #         #                  fps=30,
 #         #                  )
-#
-#
-#
+
+
+
 # rgb_dir = '/userhome/alanjjp/data/EvRealHands/53/images/21320028'
 # for j, annot_id_range in enumerate(annot_id_ranges):
 #     origin_rgb = []
@@ -198,9 +235,9 @@ import matplotlib.patches as mpatches
 #         origin_rgb[i] = origin_rgb[i][rgb_bound[0][0]: rgb_bound[0][1], rgb_bound[1][0]:rgb_bound[1][1]]
 #         origin_rgb[i] = cv2.resize(origin_rgb[i], (box, box), interpolation=cv2.INTER_AREA)
 #     all_datas[j].append(origin_rgb)
-#
-#
-#
+
+
+
 # data_concat = [[], [], [], []]
 #
 # for i in range(len(all_datas)):
@@ -232,240 +269,240 @@ import matplotlib.patches as mpatches
 #     for j in range(len(data_concat[i])):
 #         imageio.imwrite(os.path.join(output_dir, 'res_{}-{}.png'.format(annot_id_ranges[i][0], j)), data_concat[i][j])
 
-# todo for performance vs iterations
-colors_list = ['gray', 'r', (0, 0, 1), (0, 0.7, 0), (0.65, 0.65, 1), (0.5, 1, 0.5)]
-
-labels = ['EventHands', 'FastMETRO-Event', 'EvRGBHand-Large (S=2)', 'EvRGBHand-Fast (S=2)',
-          'EvRGBHand-Large (S=4)', 'EvRGBHand-Fast (S=4)',]
-# markers = ['o', '^', '^', 's', 's', '*']
-# linestyles = ['--', ':', '--', ':', '--', ':', '-']
-markers = ['o', '^', ]
-linestyles = ['-', '-']
-
-font_size = 18
-marker_size = 6
-line_width = 2
-
-output_dir = '/userhome/alanjjp/Project/MeshGraphormer/scripts/forpaper/performance_steps'
-
-steps = range(1, 10)
-
-# Large EvRGBHand
-MPJPES_normal_large = [
-    16.34, 18.92, 21.33, 23.71, 25.94, 28.15, 30.34, 32.38, 34.40,
-]
-
-MPJPES_stronglight_large = [
-    27.71, 29.31, 30.64, 31.73, 32.97, 34.30, 35.91, 37.53, 39.56,
-]
-
-MPJPES_flash_large = [
-    27.21, 30.59, 33.89, 37.33, 40.22, 43.29, 46.71, 49.81, 52.75,
-]
-
-
-
-# Large EvRGBHand
-MPJPES_normal_large_5 = [
-    16.44, 18.33, 19.95, 21.34, 22.49, 23.40, 24.17, 24.91, 25.55,
-]
-
-MPJPES_stronglight_large_5 = [
-    26.98, 27.67, 28.34, 28.94, 29.53, 30.06, 30.42, 30.87, 31.38,
-]
-
-MPJPES_flash_large_5 = [
-    26.84, 29.42, 31.79, 33.72, 35.26, 36.43, 37.55, 38.77, 40.02,
-]
-
-
-# Large EvRGBHand
-MPJPES_normal_large_7 = [
-    16.60, 18.53, 20.04, 21.39, 22.54, 23.52, 24.36, 25.21, 25.94,
-]
-
-MPJPES_stronglight_large_7 = [
-    30.94, 31.39, 32.06, 32.55, 33.12, 33.54, 33.95, 34.15, 34.50,
-]
-
-MPJPES_flash_large_7 = [
-    28.52, 30.45, 32.23, 34.25, 36.23, 37.67, 39.08, 40.18, 41.10,
-]
-
-
-
-MPVPES_normal_large = [
-    6.17, 7.35, 8.42, 9.43, 10.37, 11.29, 12.18, 13.04, 13.87,
-]
-
-MPVPES_stronglight_large = [
-    10.61, 11.38, 11.97, 12.39, 12.94, 13.52, 14.20, 14.87, 15.59,
-]
-
-MPVPES_flash_large = [
-    10.14, 11.83, 13.42, 14.94, 16.33, 17.69, 19.18, 20.48, 21.74,
-]
-
-large_res = np.array(
-    [MPJPES_normal_large, MPJPES_stronglight_large, MPJPES_flash_large, MPVPES_normal_large, MPVPES_stronglight_large, MPVPES_flash_large]
-)
-
-
-# Fast EvRGBHand
-MPJPES_normal_fast = [
-    16.49, 18.75, 20.68, 22.36, 23.84, 25.23, 26.54, 27.85, 29.05,
-]
-
-MPJPES_stronglight_fast = [
-    30.45, 30.86, 31.28, 31.67, 32.13, 32.77, 33.60, 34.50, 35.41,
-]
-
-MPJPES_flash_fast = [
-    27.86, 30.32, 32.91, 35.43, 37.86, 39.91, 42.01, 44.08, 46.06,
-]
-
-
-MPJPES_normal_fast_5 = [
-    16.39, 18.26, 19.85, 21.22, 22.34, 23.35, 24.24, 25.04, 25.69,
-]
-
-MPJPES_stronglight_fast_5 = [
-    30.98, 31.27, 31.64, 31.90, 32.01, 32.24, 32.37, 32.67, 32.91,
-]
-
-MPJPES_flash_fast_5 = [
-    27.23, 29.33, 31.36, 33.32, 34.79, 35.75, 36.90, 38.04, 38.98,
-]
-
-
-MPJPES_normal_fast_7 = [
-    17.24, 19.02, 20.38, 21.50, 22.38, 23.13, 23.74, 24.26, 24.63,
-]
-
-MPJPES_stronglight_fast_7 = [
-    31.00, 31.20, 31.46, 31.79, 32.00, 32.40, 32.53, 32.71, 32.91,
-]
-
-MPJPES_flash_fast_7 = [
-    29.19, 31.04, 32.83, 34.56, 35.78, 36.85, 37.76, 38.67, 39.30,
-]
-
-
-
-MPVPES_normal_fast = [
-    6.22, 7.25, 8.15, 8.90, 9.57, 10.20, 10.79, 11.35, 11.88,
-]
-
-MPVPES_stronglight_fast = [
-    11.71, 11.90, 12.15, 12.35, 12.62, 12.88, 13.20, 13.56, 13.91,
-]
-
-MPVPES_flash_fast = [
-    10.69, 12.05, 13.43, 14.65, 15.78, 16.77, 17.71, 18.65, 19.54,
-]
-
-large_res = np.array(
-    [MPJPES_normal_large, MPJPES_stronglight_large, MPJPES_flash_large, MPVPES_normal_large, MPVPES_stronglight_large, MPVPES_flash_large],
-    dtype=np.float32
-)
-
-fast_res = np.array(
-    [MPJPES_normal_fast, MPJPES_stronglight_fast, MPJPES_flash_fast, MPVPES_normal_fast, MPVPES_stronglight_fast, MPVPES_flash_fast],
-    dtype=np.float32
-)
-
-
-large_res_5 = np.array(
-    [MPJPES_normal_large_5, MPJPES_stronglight_large_5, MPJPES_flash_large_5, ],
-    dtype=np.float32
-)
-
-fast_res_5 = np.array(
-    [MPJPES_normal_fast_5, MPJPES_stronglight_fast_5, MPJPES_flash_fast_5,],
-    dtype=np.float32
-)
-
-large_res_7 = np.array(
-    [MPJPES_normal_large_7, MPJPES_stronglight_large_7, MPJPES_flash_large_7, ],
-    dtype=np.float32
-)
-
-fast_res_7 = np.array(
-    [MPJPES_normal_fast_7, MPJPES_stronglight_fast_7, MPJPES_flash_fast_7,],
-    dtype=np.float32
-)
-
-
-FastMETRO_res = np.array([
-    21.62, 29.06, 39.58, 8.67, 11.49, 16.51,
-], dtype=np.float32)
-
-FastMETRO_res = FastMETRO_res[:, None].repeat(9, axis=1)
-
-EventHands_res = np.array([
-    27.98, 33.47, 46.75, 11.56, 14.03, 20.01,
-], dtype=np.float32)
-EventHands_res = EventHands_res[:, None].repeat(9, axis=1)
-
-
-y_lim_large = [35, 40, 55]
-y_lim_small = [15, 25, 25]
-
-title_names = ['Normal scenes', 'Strong light scenes', 'Flash scenes']
-pdf_names = ['normal', 'stronglight', 'flash']
-
-for scene in range(3):
-    lines = []
-
-    fig, ax = plt.subplots()
-    fig.set_size_inches(8, 6.5)
-    ax.set_title(title_names[scene], fontsize=font_size+3, pad=30)
-    ax.set_xticks(np.arange(1, 10, 1))
-    ax.set_yticks(np.arange(y_lim_small[scene], y_lim_large[scene], 5))
-    ax.set_xlim((0.5, 9.5))
-    ax.set_ylim((y_lim_small[scene], y_lim_large[scene]))
-    ax.set_xlabel('Step', fontsize=font_size)
-    ax.set_ylabel('Error (mm)', fontsize=font_size)
-
-
-    for item in ax.get_xticklabels() + ax.get_yticklabels():
-        item.set_fontsize(font_size-2)
-    for error_type in range(1):
-        index = np.arange(1, 10, 1)
-        line, = ax.plot(index, EventHands_res[scene+error_type*3], color=colors_list[0], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
-        lines.append(line)
-        line, = ax.plot(index, FastMETRO_res[scene+error_type*3], color=colors_list[1], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
-        lines.append(line)
-        line, = ax.plot(index, large_res[scene+error_type*3], color=colors_list[2], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
-        lines.append(line)
-        line, = ax.plot(index, fast_res[scene+error_type*3], color=colors_list[3], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
-        lines.append(line)
-        line, = ax.plot(index, large_res_5[scene+error_type*3], color=colors_list[4], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
-        lines.append(line)
-        line, = ax.plot(index, fast_res_5[scene+error_type*3], color=colors_list[5], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
-        lines.append(line)
-        # line, = ax.plot(index, large_res_7[scene+error_type*3], color=colors_list[6], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
-        # lines.append(line)
-        # line, = ax.plot(index, fast_res_7[scene+error_type*3], color=colors_list[7], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
-        # lines.append(line)
-
-    # patches = []
-    # for i, color in enumerate(colors_list):
-    #     patches.append(mpatches.Patch(color=color, label=labels[i]))
-    # lines_new = []
-    # line, = ax.plot(index, fast_res[0]+100, label='MPJPE', color='gray', linewidth=line_width, linestyle=linestyles[0], marker=markers[0], markersize=marker_size)
-    # lines_new.append(line)
-    # patches.append(line)
-    # line, = ax.plot(index, fast_res[0]+100, label='MPVPE', color='gray', linewidth=line_width, linestyle=linestyles[1], marker=markers[1], markersize=marker_size)
-    # lines_new.append(line)
-    # patches.append(line)
-
-    ax.legend(lines, labels, loc='upper left', title_fontsize=font_size - 2, prop={'size': font_size - 2})
-    # plt.legend(handles=patches, loc='upper left', title_fontsize=font_size - 3, prop={'size': font_size - 3})
-    plt.tight_layout()
-    #plt.show()
-    mkdir(output_dir)
-    fig.savefig(os.path.join(output_dir, '{}.pdf'.format(pdf_names[scene])))
+# # todo for performance vs iterations
+# colors_list = ['gray', 'r', (0, 0, 1), (0, 0.7, 0), (0.65, 0.65, 1), (0.5, 1, 0.5)]
+#
+# labels = ['EventHands', 'FastMETRO-Event', 'EvRGBHand-Large (S=2)', 'EvRGBHand-Fast (S=2)',
+#           'EvRGBHand-Large (S=4)', 'EvRGBHand-Fast (S=4)',]
+# # markers = ['o', '^', '^', 's', 's', '*']
+# # linestyles = ['--', ':', '--', ':', '--', ':', '-']
+# markers = ['o', '^', ]
+# linestyles = ['-', '-']
+#
+# font_size = 18
+# marker_size = 6
+# line_width = 2
+#
+# output_dir = '/userhome/alanjjp/Project/MeshGraphormer/scripts/forpaper/performance_steps'
+#
+# steps = range(1, 10)
+#
+# # Large EvRGBHand
+# MPJPES_normal_large = [
+#     16.34, 18.92, 21.33, 23.71, 25.94, 28.15, 30.34, 32.38, 34.40,
+# ]
+#
+# MPJPES_stronglight_large = [
+#     27.71, 29.31, 30.64, 31.73, 32.97, 34.30, 35.91, 37.53, 39.56,
+# ]
+#
+# MPJPES_flash_large = [
+#     27.21, 30.59, 33.89, 37.33, 40.22, 43.29, 46.71, 49.81, 52.75,
+# ]
+#
+#
+#
+# # Large EvRGBHand
+# MPJPES_normal_large_5 = [
+#     16.44, 18.33, 19.95, 21.34, 22.49, 23.40, 24.17, 24.91, 25.55,
+# ]
+#
+# MPJPES_stronglight_large_5 = [
+#     26.98, 27.67, 28.34, 28.94, 29.53, 30.06, 30.42, 30.87, 31.38,
+# ]
+#
+# MPJPES_flash_large_5 = [
+#     26.84, 29.42, 31.79, 33.72, 35.26, 36.43, 37.55, 38.77, 40.02,
+# ]
+#
+#
+# # Large EvRGBHand
+# MPJPES_normal_large_7 = [
+#     16.60, 18.53, 20.04, 21.39, 22.54, 23.52, 24.36, 25.21, 25.94,
+# ]
+#
+# MPJPES_stronglight_large_7 = [
+#     30.94, 31.39, 32.06, 32.55, 33.12, 33.54, 33.95, 34.15, 34.50,
+# ]
+#
+# MPJPES_flash_large_7 = [
+#     28.52, 30.45, 32.23, 34.25, 36.23, 37.67, 39.08, 40.18, 41.10,
+# ]
+#
+#
+#
+# MPVPES_normal_large = [
+#     6.17, 7.35, 8.42, 9.43, 10.37, 11.29, 12.18, 13.04, 13.87,
+# ]
+#
+# MPVPES_stronglight_large = [
+#     10.61, 11.38, 11.97, 12.39, 12.94, 13.52, 14.20, 14.87, 15.59,
+# ]
+#
+# MPVPES_flash_large = [
+#     10.14, 11.83, 13.42, 14.94, 16.33, 17.69, 19.18, 20.48, 21.74,
+# ]
+#
+# large_res = np.array(
+#     [MPJPES_normal_large, MPJPES_stronglight_large, MPJPES_flash_large, MPVPES_normal_large, MPVPES_stronglight_large, MPVPES_flash_large]
+# )
+#
+#
+# # Fast EvRGBHand
+# MPJPES_normal_fast = [
+#     16.49, 18.75, 20.68, 22.36, 23.84, 25.23, 26.54, 27.85, 29.05,
+# ]
+#
+# MPJPES_stronglight_fast = [
+#     30.45, 30.86, 31.28, 31.67, 32.13, 32.77, 33.60, 34.50, 35.41,
+# ]
+#
+# MPJPES_flash_fast = [
+#     27.86, 30.32, 32.91, 35.43, 37.86, 39.91, 42.01, 44.08, 46.06,
+# ]
+#
+#
+# MPJPES_normal_fast_5 = [
+#     16.39, 18.26, 19.85, 21.22, 22.34, 23.35, 24.24, 25.04, 25.69,
+# ]
+#
+# MPJPES_stronglight_fast_5 = [
+#     30.98, 31.27, 31.64, 31.90, 32.01, 32.24, 32.37, 32.67, 32.91,
+# ]
+#
+# MPJPES_flash_fast_5 = [
+#     27.23, 29.33, 31.36, 33.32, 34.79, 35.75, 36.90, 38.04, 38.98,
+# ]
+#
+#
+# MPJPES_normal_fast_7 = [
+#     17.24, 19.02, 20.38, 21.50, 22.38, 23.13, 23.74, 24.26, 24.63,
+# ]
+#
+# MPJPES_stronglight_fast_7 = [
+#     31.00, 31.20, 31.46, 31.79, 32.00, 32.40, 32.53, 32.71, 32.91,
+# ]
+#
+# MPJPES_flash_fast_7 = [
+#     29.19, 31.04, 32.83, 34.56, 35.78, 36.85, 37.76, 38.67, 39.30,
+# ]
+#
+#
+#
+# MPVPES_normal_fast = [
+#     6.22, 7.25, 8.15, 8.90, 9.57, 10.20, 10.79, 11.35, 11.88,
+# ]
+#
+# MPVPES_stronglight_fast = [
+#     11.71, 11.90, 12.15, 12.35, 12.62, 12.88, 13.20, 13.56, 13.91,
+# ]
+#
+# MPVPES_flash_fast = [
+#     10.69, 12.05, 13.43, 14.65, 15.78, 16.77, 17.71, 18.65, 19.54,
+# ]
+#
+# large_res = np.array(
+#     [MPJPES_normal_large, MPJPES_stronglight_large, MPJPES_flash_large, MPVPES_normal_large, MPVPES_stronglight_large, MPVPES_flash_large],
+#     dtype=np.float32
+# )
+#
+# fast_res = np.array(
+#     [MPJPES_normal_fast, MPJPES_stronglight_fast, MPJPES_flash_fast, MPVPES_normal_fast, MPVPES_stronglight_fast, MPVPES_flash_fast],
+#     dtype=np.float32
+# )
+#
+#
+# large_res_5 = np.array(
+#     [MPJPES_normal_large_5, MPJPES_stronglight_large_5, MPJPES_flash_large_5, ],
+#     dtype=np.float32
+# )
+#
+# fast_res_5 = np.array(
+#     [MPJPES_normal_fast_5, MPJPES_stronglight_fast_5, MPJPES_flash_fast_5,],
+#     dtype=np.float32
+# )
+#
+# large_res_7 = np.array(
+#     [MPJPES_normal_large_7, MPJPES_stronglight_large_7, MPJPES_flash_large_7, ],
+#     dtype=np.float32
+# )
+#
+# fast_res_7 = np.array(
+#     [MPJPES_normal_fast_7, MPJPES_stronglight_fast_7, MPJPES_flash_fast_7,],
+#     dtype=np.float32
+# )
+#
+#
+# FastMETRO_res = np.array([
+#     21.62, 29.06, 39.58, 8.67, 11.49, 16.51,
+# ], dtype=np.float32)
+#
+# FastMETRO_res = FastMETRO_res[:, None].repeat(9, axis=1)
+#
+# EventHands_res = np.array([
+#     27.98, 33.47, 46.75, 11.56, 14.03, 20.01,
+# ], dtype=np.float32)
+# EventHands_res = EventHands_res[:, None].repeat(9, axis=1)
+#
+#
+# y_lim_large = [35, 40, 55]
+# y_lim_small = [15, 25, 25]
+#
+# title_names = ['Normal scenes', 'Strong light scenes', 'Flash scenes']
+# pdf_names = ['normal', 'stronglight', 'flash']
+#
+# for scene in range(3):
+#     lines = []
+#
+#     fig, ax = plt.subplots()
+#     fig.set_size_inches(8, 6.5)
+#     ax.set_title(title_names[scene], fontsize=font_size+3, pad=30)
+#     ax.set_xticks(np.arange(1, 10, 1))
+#     ax.set_yticks(np.arange(y_lim_small[scene], y_lim_large[scene], 5))
+#     ax.set_xlim((0.5, 9.5))
+#     ax.set_ylim((y_lim_small[scene], y_lim_large[scene]))
+#     ax.set_xlabel('Step', fontsize=font_size)
+#     ax.set_ylabel('Error (mm)', fontsize=font_size)
+#
+#
+#     for item in ax.get_xticklabels() + ax.get_yticklabels():
+#         item.set_fontsize(font_size-2)
+#     for error_type in range(1):
+#         index = np.arange(1, 10, 1)
+#         line, = ax.plot(index, EventHands_res[scene+error_type*3], color=colors_list[0], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
+#         lines.append(line)
+#         line, = ax.plot(index, FastMETRO_res[scene+error_type*3], color=colors_list[1], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
+#         lines.append(line)
+#         line, = ax.plot(index, large_res[scene+error_type*3], color=colors_list[2], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
+#         lines.append(line)
+#         line, = ax.plot(index, fast_res[scene+error_type*3], color=colors_list[3], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
+#         lines.append(line)
+#         line, = ax.plot(index, large_res_5[scene+error_type*3], color=colors_list[4], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
+#         lines.append(line)
+#         line, = ax.plot(index, fast_res_5[scene+error_type*3], color=colors_list[5], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
+#         lines.append(line)
+#         # line, = ax.plot(index, large_res_7[scene+error_type*3], color=colors_list[6], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
+#         # lines.append(line)
+#         # line, = ax.plot(index, fast_res_7[scene+error_type*3], color=colors_list[7], linewidth=line_width, linestyle=linestyles[error_type], marker=markers[error_type], markersize=marker_size)
+#         # lines.append(line)
+#
+#     # patches = []
+#     # for i, color in enumerate(colors_list):
+#     #     patches.append(mpatches.Patch(color=color, label=labels[i]))
+#     # lines_new = []
+#     # line, = ax.plot(index, fast_res[0]+100, label='MPJPE', color='gray', linewidth=line_width, linestyle=linestyles[0], marker=markers[0], markersize=marker_size)
+#     # lines_new.append(line)
+#     # patches.append(line)
+#     # line, = ax.plot(index, fast_res[0]+100, label='MPVPE', color='gray', linewidth=line_width, linestyle=linestyles[1], marker=markers[1], markersize=marker_size)
+#     # lines_new.append(line)
+#     # patches.append(line)
+#
+#     ax.legend(lines, labels, loc='upper left', title_fontsize=font_size - 2, prop={'size': font_size - 2})
+#     # plt.legend(handles=patches, loc='upper left', title_fontsize=font_size - 3, prop={'size': font_size - 3})
+#     plt.tight_layout()
+#     #plt.show()
+#     mkdir(output_dir)
+#     fig.savefig(os.path.join(output_dir, '{}.pdf'.format(pdf_names[scene])))
 
 
 

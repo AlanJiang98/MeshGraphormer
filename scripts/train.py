@@ -287,7 +287,7 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
             frames = to_device(frames, device)
             meta_data = to_device(meta_data, device)
             t_start_infer = time.time()
-            preds, atts = EvRGBStereo_model(frames, return_att=True, decode_all=False)
+            preds, atts = EvRGBStereo_model(frames, return_att=True, decode_all=True)
             infer_time.update(time.time() - t_start_infer, batch_size)
             batch_time.update(time.time() - end)
             end = time.time()
@@ -340,8 +340,10 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
             # if iteration*config['exper']['per_gpu_batch_size'] % 20 != 0:
             #     continue
             if config['eval']['output']['save']:
+                # print('step', steps)
                 for step in range(steps):
                     segments = len(preds[step])
+                    # print('segments', segments)
                     for seg in range(segments):
                         if step >=1:
                             wrist_3d_inter = ((seg + 1) * meta_data[step]['3d_joints'][:, :1] + (segments - 1 - seg) *
@@ -369,7 +371,7 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
                                 _, h, w, _ = img_bg.shape
                                 hw = [h, w]
                             else:
-                                img_bg = frames[step][key + '_ori'][-1]
+                                img_bg = frames[step][key + '_ori'][seg]
                                 _, h, w, _ = img_bg.shape
                                 hw = [h, w]
                             # print(meta_data[0]['K_'+key].device)
@@ -386,7 +388,7 @@ def run_eval_and_show(config, val_dataloader_normal, val_dataloader_fast, EvRGBS
                             for i in range(img_render.shape[0]):
                                 img_dir = op.join(config['exper']['output_dir'], str(meta_data[step]['seq_id'][i].item()), 'rendered')
                                 mkdir(img_dir)
-                                imageio.imwrite(op.join(img_dir, 'annot_{}_step_{}.jpg'.format(meta_data[0]['annot_id'][i].item(), step)),
+                                imageio.imwrite(op.join(img_dir, 'annot_{}_step_{}_seg_{}.jpg'.format(meta_data[0]['annot_id'][i].item(), step, seg)),
                                                 (img_render[i].detach().cpu().numpy() * 255).astype(np.uint8))
 
             # if config['eval']['output']['attention_map'] or True:

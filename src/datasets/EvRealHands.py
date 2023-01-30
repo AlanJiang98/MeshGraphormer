@@ -85,7 +85,8 @@ class EvRealHands(Dataset):
         # annot['sample_ids'] = [str(id) for id in mano_ids_np[1:][indices]]
         # deal with static hand pose
         #todo
-        mano_ids = mano_ids[15:-11]
+        # mano_ids = mano_ids[15:-11]
+        mano_ids = mano_ids[20:-11]
         annot['sample_ids'] = [str(id) for id in mano_ids]
         K_old = np.array(annot['camera_info']['event']['K_old'])
         K_new = np.array(annot['camera_info']['event']['K_new'])
@@ -129,7 +130,7 @@ class EvRealHands(Dataset):
         if self.config['exper']['debug']:
             if self.config['exper']['run_eval_only']:
                 # todo change!
-                seq_ids = ['20', '53',] #''1', '53', 52', '20', '21', '26', '27', '25']
+                seq_ids = ['1', '21', '5', '27', '53'] #''1', '53', 52', '20', '21', '26', '27', '25']
             else:
                 seq_ids = ['4', '20']#['24', '18']
             for seq_id in seq_ids:
@@ -179,6 +180,7 @@ class EvRealHands(Dataset):
                 self.sample_info['cam_pair_ids'].append(cam_pair_id)
         self.sample_info['samples_per_seq'] = np.array(samples_per_seq, dtype=np.int32)
         self.sample_info['samples_sum'] = np.cumsum(self.sample_info['samples_per_seq'])
+        # print(len(self.sample_info['samples_sum']))
 
     def get_info_from_sample_id(self, sample_id):
         '''

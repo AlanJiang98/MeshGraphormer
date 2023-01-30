@@ -9,12 +9,12 @@ exper:
   preprocess:
     ev_repre: 'LNES' #'Lnes', 'eci'
     event_range: 'num' # 'time'
-    num_window: 7000
+    num_window: 3000
     steps: 2
-    segments: 3
+    segments: 1
 
 eval:
-  fast_fps: 45 #120
+  fast_fps: 15 #120
   fast_window: 5000
   multiscale: False
   output:
